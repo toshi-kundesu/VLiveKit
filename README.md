@@ -38,7 +38,6 @@ The installer checks Unity Package Manager, `Packages/manifest.json`, local `Pac
 - VLiveKit StageBuilder
 - VLiveKit StageEffect
 - VLiveKit Test Assets Container
-- VLive Third Party Utilities
 - VLiveKit VideoRack
 
 ## Install

@@ -24,7 +24,6 @@ internal static class VLiveKitInstaller
         new("com.toshi.vlivekit.testassetscontainer", "VLiveKit Test Assets Container", "https://github.com/toshi-kundesu/VLiveKit_TestAssetsContainer.git?path=/Assets/toshi.VLiveKit/TestAssetsContainer", "Packages/VLiveKit_TestAssetsContainer", "Assets/toshi.VLiveKit/TestAssetsContainer"),
         new("com.toshi.vlivekit.stagebuilder", "VLiveKit StageBuilder", "https://github.com/toshi-kundesu/VLiveKit_StageBuilder.git?path=/Assets/toshi.VLiveKit/StageBuilder", "Packages/VLiveKit_StageBuilder", "Assets/toshi.VLiveKit/StageBuilder"),
         new("com.toshi.vlivekit.stageeffect", "VLiveKit StageEffect", "https://github.com/toshi-kundesu/VLiveKit_StageEffect.git?path=/Assets/toshi.VLiveKit/StageEffect", "Packages/VLiveKit_StageEffect", "Assets/toshi.VLiveKit/StageEffect"),
-        new("com.toshi.vlivekit.thirdpartyutilities", "VLive Third Party Utilities", "https://github.com/toshi-kundesu/VLiveKit_ThirdPartyUtilities.git?path=/Assets/toshi.VLiveKit/ThirdPartyUtilities", "Packages/VLiveKit_ThirdPartyUtilities", "Assets/toshi.VLiveKit/ThirdPartyUtilities"),
         new("com.toshi.vlivekit.videorack", "VLiveKit VideoRack", "https://github.com/toshi-kundesu/VLiveKit_VideoRack.git?path=/Assets/toshi.VLiveKit/VideoRack", "Packages/VLiveKit_VideoRack", "Assets/toshi.VLiveKit/VideoRack"),
     };
 
