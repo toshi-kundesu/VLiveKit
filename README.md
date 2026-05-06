@@ -2,7 +2,7 @@
 
 VLiveKit is a small Unity Editor installer package.
 
-This package does not depend on the individual VLiveKit packages. It only adds an installer menu that checks the current project and installs missing VLiveKit packages when you choose to do so.
+This package does not depend on the individual VLiveKit packages. It adds an installer menu that checks the current project and installs missing VLiveKit packages when you choose to do so, and declares shared external package dependencies used by VLiveKit workflows.
 
 ## Menu
 
@@ -45,6 +45,14 @@ Configure the scoped registry in `Packages/manifest.json`.
       "url": "https://registry.npmjs.org",
       "scopes": [
         "com.toshi"
+      ]
+    },
+    {
+      "name": "npmjs",
+      "url": "https://registry.npmjs.com",
+      "scopes": [
+        "jp.keijiro",
+        "com.hecomi"
       ]
     }
   ],

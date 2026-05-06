@@ -17,5 +17,12 @@
                      "VLiveKit",
                      "Virtual Live",
                      "Installer"
-                 ]
+                 ],
+    "dependencies":  {
+                         "jp.keijiro.klak.ndi":  "2.1.4",
+                         "jp.keijiro.klak.hap":  "0.1.20",
+                         "com.hecomi.ulipsync":  "3.1.4",
+                         "com.hecomi.uosc":  "2.2.0",
+                         "com.unity.live-capture":  "4.0.1"
+                     }
 }
