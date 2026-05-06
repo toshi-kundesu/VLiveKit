@@ -521,6 +521,12 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         activeDisplayName = activeOperation.Spec.DisplayName;
         activeOperation.Message = "Adding " + packageId;
         statusText = GetOperationProgressLabel(activeOperation.Spec.DisplayName);
+        if (EnsureExternalScopedRegistry())
+        {
+            statusText = "Updated scoped registries. " + statusText;
+            AssetDatabase.Refresh();
+        }
+
         EditorUtility.DisplayProgressBar("VLiveKitPackageManager", statusText, GetOperationProgress());
         addRequest = Client.Add(packageId);
     }
@@ -1167,6 +1173,65 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     {
         var manifestPath = ToProjectPath("Packages/manifest.json");
         return File.Exists(manifestPath) ? File.ReadAllText(manifestPath) : string.Empty;
+    }
+
+    private static bool EnsureExternalScopedRegistry()
+    {
+        var manifestPath = ToProjectPath("Packages/manifest.json");
+        if (!File.Exists(manifestPath))
+        {
+            return false;
+        }
+
+        var json = File.ReadAllText(manifestPath);
+        if (json.Contains("\"jp.keijiro\"") && json.Contains("\"com.hecomi\""))
+        {
+            return false;
+        }
+
+        var registryBlock =
+            "    {\n" +
+            "      \"name\": \"npmjs\",\n" +
+            "      \"url\": \"https://registry.npmjs.com\",\n" +
+            "      \"scopes\": [\n" +
+            "        \"jp.keijiro\",\n" +
+            "        \"com.hecomi\"\n" +
+            "      ]\n" +
+            "    }";
+
+        string updatedJson;
+        var scopedRegistryMatch = Regex.Match(json, "\"scopedRegistries\"\\s*:\\s*\\[");
+        if (scopedRegistryMatch.Success)
+        {
+            var insertIndex = scopedRegistryMatch.Index + scopedRegistryMatch.Length;
+            var nextIndex = insertIndex;
+            while (nextIndex < json.Length && char.IsWhiteSpace(json[nextIndex]))
+            {
+                nextIndex++;
+            }
+
+            var suffix = nextIndex < json.Length && json[nextIndex] == ']'
+                ? "\n" + registryBlock + "\n  "
+                : "\n" + registryBlock + ",";
+            updatedJson = json.Insert(insertIndex, suffix);
+        }
+        else
+        {
+            var braceIndex = json.IndexOf('{');
+            if (braceIndex < 0)
+            {
+                return false;
+            }
+
+            var scopedRegistriesBlock =
+                "\n  \"scopedRegistries\": [\n" +
+                registryBlock +
+                "\n  ],";
+            updatedJson = json.Insert(braceIndex + 1, scopedRegistriesBlock);
+        }
+
+        File.WriteAllText(manifestPath, updatedJson, new UTF8Encoding(false));
+        return true;
     }
 
     private static string ReadLocalPackageVersion(PackageSpec package)

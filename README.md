@@ -2,7 +2,7 @@
 
 VLiveKit is a small Unity Editor installer package.
 
-This package does not depend on the individual VLiveKit packages. It adds an installer menu that checks the current project and installs missing VLiveKit packages when you choose to do so, and declares shared external package dependencies used by VLiveKit workflows.
+This package does not depend on the individual VLiveKit packages. It adds an installer menu that checks the current project and installs missing VLiveKit packages when you choose to do so.
 
 ## Menu
 
@@ -57,7 +57,7 @@ Configure the scoped registry in `Packages/manifest.json`.
     }
   ],
   "dependencies": {
-    "com.toshi.vlivekit": "0.1.18"
+    "com.toshi.vlivekit": "0.1.19"
   }
 }
 ```
