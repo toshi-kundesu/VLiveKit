@@ -31,9 +31,13 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private UnityWebRequest catalogRequest;
     private ListRequest listRequest;
     private AddRequest addRequest;
+    private RemoveRequest removeRequest;
     private PackageRow activeOperation;
     private string activePackageId;
     private string activeDisplayName;
+    private PackageRow activeRemoveOperation;
+    private string activeRemovePackageId;
+    private string activeRemoveDisplayName;
     private int operationTotalCount;
     private int operationCompletedCount;
     private GUIStyle headerStyle;
@@ -158,7 +162,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private void Refresh()
     {
-        if (isChecking || addRequest != null)
+        if (isChecking || addRequest != null || removeRequest != null)
         {
             return;
         }
@@ -192,6 +196,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         UpdateListRequest();
         UpdateLatestRequests();
         UpdateAddRequest();
+        UpdateRemoveRequest();
     }
 
     private void UpdateCatalogRequests()
@@ -357,6 +362,48 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         Repaint();
     }
 
+    private void UpdateRemoveRequest()
+    {
+        if (removeRequest == null || !removeRequest.IsCompleted)
+        {
+            return;
+        }
+
+        var completedRow = activeRemoveOperation ?? FindRowByPackageId(activeRemovePackageId);
+        var displayName = !string.IsNullOrEmpty(activeRemoveDisplayName) ? activeRemoveDisplayName : activeRemovePackageId;
+
+        if (removeRequest.Status == StatusCode.Success)
+        {
+            if (completedRow != null)
+            {
+                completedRow.State = InstallState.Missing;
+                completedRow.InstalledVersion = "";
+                completedRow.Message = "Uninstalled";
+            }
+
+            statusText = "Uninstalled " + displayName;
+        }
+        else
+        {
+            var errorMessage = removeRequest.Error != null ? removeRequest.Error.message : "Unknown Package Manager error.";
+            if (completedRow != null)
+            {
+                completedRow.Message = errorMessage;
+            }
+
+            statusText = "Failed to uninstall: " + displayName;
+            Debug.LogError("Failed to uninstall " + displayName + ": " + errorMessage);
+        }
+
+        removeRequest = null;
+        activeRemoveOperation = null;
+        activeRemovePackageId = null;
+        activeRemoveDisplayName = null;
+        EditorUtility.ClearProgressBar();
+        Refresh();
+        Repaint();
+    }
+
     private void ApplyPackageCollection(PackageCollection packageCollection)
     {
         var packageVersions = new Dictionary<string, string>();
@@ -425,7 +472,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private void QueueRows(Predicate<PackageRow> predicate)
     {
-        if (addRequest != null)
+        if (addRequest != null || removeRequest != null)
         {
             return;
         }
@@ -476,6 +523,31 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         statusText = GetOperationProgressLabel(activeOperation.Spec.DisplayName);
         EditorUtility.DisplayProgressBar("VLiveKitPackageManager", statusText, GetOperationProgress());
         addRequest = Client.Add(packageId);
+    }
+
+    private void UninstallRow(PackageRow row)
+    {
+        if (row == null || addRequest != null || removeRequest != null || isChecking || !row.CanUninstall)
+        {
+            return;
+        }
+
+        if (!EditorUtility.DisplayDialog(
+            "Uninstall VLiveKit package",
+            "Remove " + row.Spec.DisplayName + " from Package Manager dependencies?",
+            "Uninstall",
+            "Cancel"))
+        {
+            return;
+        }
+
+        activeRemoveOperation = row;
+        activeRemovePackageId = row.Spec.PackageName;
+        activeRemoveDisplayName = row.Spec.DisplayName;
+        row.Message = "Uninstalling " + row.Spec.PackageName;
+        statusText = "Uninstalling " + row.Spec.DisplayName;
+        EditorUtility.DisplayProgressBar("VLiveKitPackageManager", statusText, 0.5f);
+        removeRequest = Client.Remove(row.Spec.PackageName);
     }
 
     private void EnsureRows()
@@ -560,8 +632,15 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         EditorGUI.DrawRect(badgeRect, AccentColor(0.34f));
         GUI.Label(badgeRect, "LIVE TOOLKIT", titleBadgeStyle);
 
+        var updateAllRect = new Rect(rect.xMax - 274f, rect.y + 18f, 124f, 30f);
+        GUI.enabled = !isChecking && addRequest == null && removeRequest == null;
+        if (GUI.Button(updateAllRect, "Update All", primaryButtonStyle))
+        {
+            QueueRows(row => row.CanUpdate);
+        }
+
         var refreshRect = new Rect(rect.xMax - 142f, rect.y + 18f, 124f, 30f);
-        GUI.enabled = !isChecking && addRequest == null;
+        GUI.enabled = !isChecking && addRequest == null && removeRequest == null;
         if (GUI.Button(refreshRect, "Refresh", primaryButtonStyle))
         {
             Refresh();
@@ -569,7 +648,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
         GUI.enabled = true;
 
-        var statusRect = new Rect(rect.xMax - 342f, rect.y + 55f, 324f, 20f);
+        var statusRect = new Rect(rect.xMax - 420f, rect.y + 55f, 402f, 20f);
         GUI.Label(statusRect, catalogSource + " - " + statusText, new GUIStyle(mutedStyle) { alignment = TextAnchor.MiddleRight });
     }
 
@@ -586,15 +665,10 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private void DrawToolbar()
     {
         EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
-        GUI.enabled = !isChecking && addRequest == null;
+        GUI.enabled = !isChecking && addRequest == null && removeRequest == null;
         if (GUILayout.Button("Install Missing", EditorStyles.toolbarButton, GUILayout.Width(110f)))
         {
             QueueRows(row => row.State == InstallState.Missing);
-        }
-
-        if (GUILayout.Button("Update All", EditorStyles.toolbarButton, GUILayout.Width(90f)))
-        {
-            QueueRows(row => row.CanUpdate);
         }
 
         if (GUILayout.Button("Logs", EditorStyles.toolbarButton, GUILayout.Width(64f)))
@@ -604,7 +678,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
         GUI.enabled = true;
         GUILayout.FlexibleSpace();
-        GUILayout.Label("Use Refresh in the header to recheck packages.", mutedStyle);
+        GUILayout.Label("Use Update All or Refresh in the header.", mutedStyle);
         EditorGUILayout.EndHorizontal();
 
         if (IsOperating)
@@ -702,7 +776,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             Application.OpenURL(row.Spec.DocumentationUrl);
         }
 
-        GUI.enabled = addRequest == null && !isChecking && row.CanInstallFromRegistry;
+        GUI.enabled = addRequest == null && removeRequest == null && !isChecking && row.CanInstallFromRegistry;
         if (row.State == InstallState.Missing)
         {
             if (GUILayout.Button("Install", toolbarButtonStyle, GUILayout.Width(78f)))
@@ -721,6 +795,12 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         {
             GUI.enabled = false;
             GUILayout.Button(row.IsLocal ? "Local" : "Current", toolbarButtonStyle, GUILayout.Width(78f));
+        }
+
+        GUI.enabled = addRequest == null && removeRequest == null && !isChecking && row.CanUninstall;
+        if (GUILayout.Button("Uninstall", toolbarButtonStyle, GUILayout.Width(78f)))
+        {
+            UninstallRow(row);
         }
 
         GUI.enabled = true;
@@ -787,10 +867,15 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         EditorGUILayout.EndHorizontal();
     }
 
-    private bool IsOperating => addRequest != null || pendingOperations.Count > 0;
+    private bool IsOperating => addRequest != null || removeRequest != null || pendingOperations.Count > 0;
 
     private float GetOperationProgress()
     {
+        if (removeRequest != null)
+        {
+            return 0.5f;
+        }
+
         if (operationTotalCount <= 0)
         {
             return 0f;
@@ -1229,6 +1314,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         public bool IsLocal => State == InstallState.LocalPackage || State == InstallState.AssetsFolder;
         public bool CanInstallFromRegistry => !IsLocal && LatestCheckState != LatestState.Checking;
         public bool CanUpdate => State != InstallState.Missing && !IsLocal && !string.IsNullOrEmpty(InstalledVersion) && !string.IsNullOrEmpty(LatestVersion) && CompareVersions(InstalledVersion, LatestVersion) < 0;
+        public bool CanUninstall => State == InstallState.PackageManager && Spec.PackageName != CatalogPackageName;
 
         public string LatestLabel
         {
