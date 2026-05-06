@@ -49,7 +49,7 @@ Configure the scoped registry in `Packages/manifest.json`.
     }
   ],
   "dependencies": {
-    "com.toshi.vlivekit": "0.1.12"
+    "com.toshi.vlivekit": "0.1.13"
   }
 }
 ```

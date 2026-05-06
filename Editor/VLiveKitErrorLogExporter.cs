@@ -274,12 +274,14 @@ internal sealed class VLiveKitErrorLogExporter : EditorWindow
                 for (var i = 0; i < count; i++)
                 {
                     var entry = Activator.CreateInstance(logEntryType);
-                    var result = getEntryMethod.Invoke(null, new[] { (object)i, entry });
+                    var arguments = new[] { (object)i, entry };
+                    var result = getEntryMethod.Invoke(null, arguments);
                     if (result is bool ok && !ok)
                     {
                         continue;
                     }
 
+                    entry = arguments[1];
                     entries.Add(new ConsoleLogEntry(
                         GetString(logEntryType, entry, "condition"),
                         GetString(logEntryType, entry, "stackTrace"),
