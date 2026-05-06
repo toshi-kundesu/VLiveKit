@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Text;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.PackageManager;
@@ -53,8 +54,8 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     [MenuItem(MenuRoot + "Package Manager")]
     private static void OpenWindow()
     {
-        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKit");
-        window.minSize = new Vector2(760f, 480f);
+        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitPackageManager");
+        window.minSize = new Vector2(900f, 520f);
         window.Show();
         window.Refresh();
     }
@@ -68,8 +69,8 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     [MenuItem(MenuRoot + "Install Missing Packages")]
     private static void InstallMissingPackages()
     {
-        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKit");
-        window.minSize = new Vector2(760f, 480f);
+        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitPackageManager");
+        window.minSize = new Vector2(900f, 520f);
         window.Show();
         window.RefreshAndInstallMissing();
     }
@@ -95,8 +96,8 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
 
         var result = EditorUtility.DisplayDialogComplex(
-            "VLiveKit",
-            "Open the VLiveKit Package Manager to check installed packages and available updates?",
+            "VLiveKitPackageManager",
+            "Open VLiveKitPackageManager to check installed packages and available updates?",
             "Open",
             "Later",
             "Do Not Show Again");
@@ -470,7 +471,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         activeDisplayName = activeOperation.Spec.DisplayName;
         activeOperation.Message = "Adding " + packageId;
         statusText = GetOperationProgressLabel(activeOperation.Spec.DisplayName);
-        EditorUtility.DisplayProgressBar("VLiveKit Package Manager", statusText, GetOperationProgress());
+        EditorUtility.DisplayProgressBar("VLiveKitPackageManager", statusText, GetOperationProgress());
         addRequest = Client.Add(packageId);
     }
 
@@ -525,10 +526,10 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.08f, 0.12f, 0.15f) : new Color(0.82f, 0.93f, 0.98f));
 
         var titleRect = new Rect(rect.x + 18f, rect.y + 14f, rect.width - 36f, 28f);
-        GUI.Label(titleRect, "VLiveKit Package Manager", headerStyle);
+        GUI.Label(titleRect, "VLiveKitPackageManager", headerStyle);
 
         var subtitleRect = new Rect(rect.x + 18f, rect.y + 45f, rect.width - 36f, 20f);
-        GUI.Label(subtitleRect, "Check installed packages, compare latest registry versions, and install updates on demand.", mutedStyle);
+        GUI.Label(subtitleRect, "Check versions, update packages, and jump to repositories or docs.", mutedStyle);
     }
 
     private void DrawToolbar()
@@ -637,6 +638,16 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
         DrawVersionBlock("Installed", string.IsNullOrEmpty(row.InstalledVersion) ? "-" : row.InstalledVersion);
         DrawVersionBlock("Latest", row.LatestLabel);
+
+        if (GUILayout.Button("GitHub", toolbarButtonStyle, GUILayout.Width(72f)))
+        {
+            Application.OpenURL(row.Spec.RepositoryUrl);
+        }
+
+        if (GUILayout.Button("Docs", toolbarButtonStyle, GUILayout.Width(58f)))
+        {
+            Application.OpenURL(row.Spec.DocumentationUrl);
+        }
 
         GUI.enabled = addRequest == null && !isChecking && row.CanInstallFromRegistry;
         if (row.State == InstallState.Missing)
@@ -924,14 +935,41 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             return false;
         }
 
-        var itemMatches = Regex.Matches(json, "\\{\\s*\"name\"\\s*:\\s*\"([^\"]+)\"\\s*,\\s*\"displayName\"\\s*:\\s*\"([^\"]+)\"\\s*,\\s*\"packageFolderPath\"\\s*:\\s*\"([^\"]+)\"\\s*,\\s*\"assetFolderPath\"\\s*:\\s*\"([^\"]+)\"\\s*\\}", RegexOptions.Singleline);
-        foreach (Match match in itemMatches)
+        PackageCatalogData catalog;
+        try
         {
+            catalog = JsonUtility.FromJson<PackageCatalogData>(json);
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (catalog == null || catalog.packages == null)
+        {
+            return false;
+        }
+
+        foreach (var item in catalog.packages)
+        {
+            if (item == null ||
+                string.IsNullOrEmpty(item.name) ||
+                string.IsNullOrEmpty(item.displayName) ||
+                string.IsNullOrEmpty(item.packageFolderPath) ||
+                string.IsNullOrEmpty(item.assetFolderPath))
+            {
+                continue;
+            }
+
+            var repositoryUrl = string.IsNullOrEmpty(item.repositoryUrl) ? BuildFallbackRepositoryUrl(item.name) : item.repositoryUrl;
+            var documentationUrl = string.IsNullOrEmpty(item.documentationUrl) ? repositoryUrl + "#readme" : item.documentationUrl;
             loadedRows.Add(new PackageRow(new PackageSpec(
-                match.Groups[1].Value,
-                match.Groups[2].Value,
-                match.Groups[3].Value,
-                match.Groups[4].Value)));
+                item.name,
+                item.displayName,
+                item.packageFolderPath,
+                item.assetFolderPath,
+                repositoryUrl,
+                documentationUrl)));
         }
 
         return loadedRows.Count > 0;
@@ -940,16 +978,16 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private void LoadFallbackCatalog()
     {
         rows.Clear();
-        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.artnetlink", "VLiveKit ArtNetLink", "Packages/VLiveKit_ArtNetLink", "Assets/toshi.VLiveKit/ArtNetLink")));
-        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.cameraunit", "VLive Camera Unit", "Packages/VLiveKit_camera", "Assets/toshi.VLiveKit/VLiveCameraUnit")));
-        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.ledvision", "VLiveKit LED Vision", "Packages/VLiveKit_LEDVision", "Assets/toshi.VLiveKit/LEDVision")));
-        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.lensfilters", "VLive Lens Filters", "Packages/VLiveKit_LiveLensFilters", "Assets/toshi.VLiveKit/LiveLensFilters")));
-        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.livetoon", "VLive Live Toon", "Packages/VLiveKit_LiveToon", "Assets/toshi.VLiveKit/livetoon")));
-        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.performeract", "VLive Performer Act", "Packages/VLiveKit_PerformerAct", "Assets/toshi.VLiveKit/PerformerAct")));
-        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.testassetscontainer", "VLiveKit Test Assets Container", "Packages/VLiveKit_TestAssetsContainer", "Assets/toshi.VLiveKit/TestAssetsContainer")));
-        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.stagebuilder", "VLiveKit StageBuilder", "Packages/VLiveKit_StageBuilder", "Assets/toshi.VLiveKit/StageBuilder")));
-        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.stageeffect", "VLiveKit StageEffect", "Packages/VLiveKit_StageEffect", "Assets/toshi.VLiveKit/StageEffect")));
-        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.videorack", "VLiveKit VideoRack", "Packages/VLiveKit_VideoRack", "Assets/toshi.VLiveKit/VideoRack")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.artnetlink", "VLiveKit ArtNetLink", "Packages/VLiveKit_ArtNetLink", "Assets/toshi.VLiveKit/ArtNetLink", "https://github.com/toshi-kundesu/VLiveKit_ArtNetLink", "https://github.com/toshi-kundesu/VLiveKit_ArtNetLink#readme")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.cameraunit", "VLive Camera Unit", "Packages/VLiveKit_camera", "Assets/toshi.VLiveKit/VLiveCameraUnit", "https://github.com/toshi-kundesu/VLiveCameraUnit", "https://github.com/toshi-kundesu/VLiveCameraUnit#readme")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.ledvision", "VLiveKit LED Vision", "Packages/VLiveKit_LEDVision", "Assets/toshi.VLiveKit/LEDVision", "https://github.com/toshi-kundesu/VLiveKit_LEDVision", "https://github.com/toshi-kundesu/VLiveKit_LEDVision#readme")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.lensfilters", "VLive Lens Filters", "Packages/VLiveKit_LiveLensFilters", "Assets/toshi.VLiveKit/LiveLensFilters", "https://github.com/toshi-kundesu/VLiveKit_LiveLensFilters", "https://github.com/toshi-kundesu/VLiveKit_LiveLensFilters#readme")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.livetoon", "VLive Live Toon", "Packages/VLiveKit_LiveToon", "Assets/toshi.VLiveKit/livetoon", "https://github.com/toshi-kundesu/VLiveKit_livetoon", "https://github.com/toshi-kundesu/VLiveKit_livetoon#readme")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.performeract", "VLive Performer Act", "Packages/VLiveKit_PerformerAct", "Assets/toshi.VLiveKit/PerformerAct", "https://github.com/toshi-kundesu/VLiveKit_PerformerAct", "https://github.com/toshi-kundesu/VLiveKit_PerformerAct#readme")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.testassetscontainer", "VLiveKit Test Assets Container", "Packages/VLiveKit_TestAssetsContainer", "Assets/toshi.VLiveKit/TestAssetsContainer", "https://github.com/toshi-kundesu/VLiveKit_TestAssetsContainer", "https://github.com/toshi-kundesu/VLiveKit_TestAssetsContainer#readme")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.stagebuilder", "VLiveKit StageBuilder", "Packages/VLiveKit_StageBuilder", "Assets/toshi.VLiveKit/StageBuilder", "https://github.com/toshi-kundesu/VLiveKit_StageBuilder", "https://github.com/toshi-kundesu/VLiveKit_StageBuilder#readme")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.stageeffect", "VLiveKit StageEffect", "Packages/VLiveKit_StageEffect", "Assets/toshi.VLiveKit/StageEffect", "https://github.com/toshi-kundesu/VLiveKit_StageEffect", "https://github.com/toshi-kundesu/VLiveKit_StageEffect#readme")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.videorack", "VLiveKit VideoRack", "Packages/VLiveKit_VideoRack", "Assets/toshi.VLiveKit/VideoRack", "https://github.com/toshi-kundesu/VLiveKit_VideoRack", "https://github.com/toshi-kundesu/VLiveKit_VideoRack#readme")));
     }
 
     private static string ReadManifestJson()
@@ -969,6 +1007,11 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         var json = File.ReadAllText(packageJsonPath);
         var match = Regex.Match(json, "\"version\"\\s*:\\s*\"([^\"]+)\"");
         return match.Success ? match.Groups[1].Value : null;
+    }
+
+    private static string BuildFallbackRepositoryUrl(string packageName)
+    {
+        return "https://www.npmjs.com/package/" + packageName;
     }
 
     private static string FindLocalPackageJson(PackageSpec package)
@@ -1027,18 +1070,39 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private readonly struct PackageSpec
     {
-        public PackageSpec(string packageName, string displayName, string packageFolderPath, string assetFolderPath)
+        public PackageSpec(string packageName, string displayName, string packageFolderPath, string assetFolderPath, string repositoryUrl, string documentationUrl)
         {
             PackageName = packageName;
             DisplayName = displayName;
             PackageFolderPath = packageFolderPath;
             AssetFolderPath = assetFolderPath;
+            RepositoryUrl = repositoryUrl;
+            DocumentationUrl = documentationUrl;
         }
 
         public string PackageName { get; }
         public string DisplayName { get; }
         public string PackageFolderPath { get; }
         public string AssetFolderPath { get; }
+        public string RepositoryUrl { get; }
+        public string DocumentationUrl { get; }
+    }
+
+    [Serializable]
+    private sealed class PackageCatalogData
+    {
+        public PackageCatalogItem[] packages;
+    }
+
+    [Serializable]
+    private sealed class PackageCatalogItem
+    {
+        public string name;
+        public string displayName;
+        public string packageFolderPath;
+        public string assetFolderPath;
+        public string repositoryUrl;
+        public string documentationUrl;
     }
 
     private sealed class PackageRow

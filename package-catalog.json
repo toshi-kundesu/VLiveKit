@@ -4,61 +4,81 @@
       "name": "com.toshi.vlivekit.artnetlink",
       "displayName": "VLiveKit ArtNetLink",
       "packageFolderPath": "Packages/VLiveKit_ArtNetLink",
-      "assetFolderPath": "Assets/toshi.VLiveKit/ArtNetLink"
+      "assetFolderPath": "Assets/toshi.VLiveKit/ArtNetLink",
+      "repositoryUrl": "https://github.com/toshi-kundesu/VLiveKit_ArtNetLink",
+      "documentationUrl": "https://github.com/toshi-kundesu/VLiveKit_ArtNetLink#readme"
     },
     {
       "name": "com.toshi.vlivekit.cameraunit",
       "displayName": "VLive Camera Unit",
       "packageFolderPath": "Packages/VLiveKit_camera",
-      "assetFolderPath": "Assets/toshi.VLiveKit/VLiveCameraUnit"
+      "assetFolderPath": "Assets/toshi.VLiveKit/VLiveCameraUnit",
+      "repositoryUrl": "https://github.com/toshi-kundesu/VLiveCameraUnit",
+      "documentationUrl": "https://github.com/toshi-kundesu/VLiveCameraUnit#readme"
     },
     {
       "name": "com.toshi.vlivekit.ledvision",
       "displayName": "VLiveKit LED Vision",
       "packageFolderPath": "Packages/VLiveKit_LEDVision",
-      "assetFolderPath": "Assets/toshi.VLiveKit/LEDVision"
+      "assetFolderPath": "Assets/toshi.VLiveKit/LEDVision",
+      "repositoryUrl": "https://github.com/toshi-kundesu/VLiveKit_LEDVision",
+      "documentationUrl": "https://github.com/toshi-kundesu/VLiveKit_LEDVision#readme"
     },
     {
       "name": "com.toshi.vlivekit.lensfilters",
       "displayName": "VLive Lens Filters",
       "packageFolderPath": "Packages/VLiveKit_LiveLensFilters",
-      "assetFolderPath": "Assets/toshi.VLiveKit/LiveLensFilters"
+      "assetFolderPath": "Assets/toshi.VLiveKit/LiveLensFilters",
+      "repositoryUrl": "https://github.com/toshi-kundesu/VLiveKit_LiveLensFilters",
+      "documentationUrl": "https://github.com/toshi-kundesu/VLiveKit_LiveLensFilters#readme"
     },
     {
       "name": "com.toshi.vlivekit.livetoon",
       "displayName": "VLive Live Toon",
       "packageFolderPath": "Packages/VLiveKit_LiveToon",
-      "assetFolderPath": "Assets/toshi.VLiveKit/livetoon"
+      "assetFolderPath": "Assets/toshi.VLiveKit/livetoon",
+      "repositoryUrl": "https://github.com/toshi-kundesu/VLiveKit_livetoon",
+      "documentationUrl": "https://github.com/toshi-kundesu/VLiveKit_livetoon#readme"
     },
     {
       "name": "com.toshi.vlivekit.performeract",
       "displayName": "VLive Performer Act",
       "packageFolderPath": "Packages/VLiveKit_PerformerAct",
-      "assetFolderPath": "Assets/toshi.VLiveKit/PerformerAct"
+      "assetFolderPath": "Assets/toshi.VLiveKit/PerformerAct",
+      "repositoryUrl": "https://github.com/toshi-kundesu/VLiveKit_PerformerAct",
+      "documentationUrl": "https://github.com/toshi-kundesu/VLiveKit_PerformerAct#readme"
     },
     {
       "name": "com.toshi.vlivekit.testassetscontainer",
       "displayName": "VLiveKit Test Assets Container",
       "packageFolderPath": "Packages/VLiveKit_TestAssetsContainer",
-      "assetFolderPath": "Assets/toshi.VLiveKit/TestAssetsContainer"
+      "assetFolderPath": "Assets/toshi.VLiveKit/TestAssetsContainer",
+      "repositoryUrl": "https://github.com/toshi-kundesu/VLiveKit_TestAssetsContainer",
+      "documentationUrl": "https://github.com/toshi-kundesu/VLiveKit_TestAssetsContainer#readme"
     },
     {
       "name": "com.toshi.vlivekit.stagebuilder",
       "displayName": "VLiveKit StageBuilder",
       "packageFolderPath": "Packages/VLiveKit_StageBuilder",
-      "assetFolderPath": "Assets/toshi.VLiveKit/StageBuilder"
+      "assetFolderPath": "Assets/toshi.VLiveKit/StageBuilder",
+      "repositoryUrl": "https://github.com/toshi-kundesu/VLiveKit_StageBuilder",
+      "documentationUrl": "https://github.com/toshi-kundesu/VLiveKit_StageBuilder#readme"
     },
     {
       "name": "com.toshi.vlivekit.stageeffect",
       "displayName": "VLiveKit StageEffect",
       "packageFolderPath": "Packages/VLiveKit_StageEffect",
-      "assetFolderPath": "Assets/toshi.VLiveKit/StageEffect"
+      "assetFolderPath": "Assets/toshi.VLiveKit/StageEffect",
+      "repositoryUrl": "https://github.com/toshi-kundesu/VLiveKit_StageEffect",
+      "documentationUrl": "https://github.com/toshi-kundesu/VLiveKit_StageEffect#readme"
     },
     {
       "name": "com.toshi.vlivekit.videorack",
       "displayName": "VLiveKit VideoRack",
       "packageFolderPath": "Packages/VLiveKit_VideoRack",
-      "assetFolderPath": "Assets/toshi.VLiveKit/VideoRack"
+      "assetFolderPath": "Assets/toshi.VLiveKit/VideoRack",
+      "repositoryUrl": "https://github.com/toshi-kundesu/VLiveKit_VideoRack",
+      "documentationUrl": "https://github.com/toshi-kundesu/VLiveKit_VideoRack#readme"
     }
   ]
 }

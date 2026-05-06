@@ -15,6 +15,7 @@ The window can:
 - refresh the package catalog from the latest published `com.toshi.vlivekit` package
 - check installed package versions
 - check the latest versions from the npm registry
+- open package GitHub repositories and documentation
 - install missing packages
 - update installed registry packages
 - show update progress while batch operations are running
@@ -48,7 +49,7 @@ Configure the scoped registry in `Packages/manifest.json`.
     }
   ],
   "dependencies": {
-    "com.toshi.vlivekit": "0.1.7"
+    "com.toshi.vlivekit": "0.1.9"
   }
 }
 ```
