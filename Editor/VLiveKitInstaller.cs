@@ -41,6 +41,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private GUIStyle badgeStyle;
     private GUIStyle mutedStyle;
     private GUIStyle toolbarButtonStyle;
+    private GUIStyle titleBadgeStyle;
     private bool stylesReady;
     private string statusText = "Ready";
     private string catalogSource = "Bundled catalog";
@@ -517,19 +518,62 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         {
             fixedHeight = 26
         };
+        titleBadgeStyle = new GUIStyle(EditorStyles.boldLabel)
+        {
+            alignment = TextAnchor.MiddleCenter,
+            fontSize = 10,
+            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.82f, 0.95f, 1f) : new Color(0.08f, 0.16f, 0.22f) },
+            padding = new RectOffset(8, 8, 2, 2)
+        };
         stylesReady = true;
     }
 
     private void DrawHeader()
     {
-        var rect = GUILayoutUtility.GetRect(0f, 86f, GUILayout.ExpandWidth(true));
-        EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.08f, 0.12f, 0.15f) : new Color(0.82f, 0.93f, 0.98f));
+        var rect = GUILayoutUtility.GetRect(0f, 104f, GUILayout.ExpandWidth(true));
+        var topColor = EditorGUIUtility.isProSkin ? new Color(0.04f, 0.06f, 0.09f) : new Color(0.80f, 0.94f, 0.96f);
+        var stageColor = EditorGUIUtility.isProSkin ? new Color(0.08f, 0.16f, 0.20f) : new Color(0.92f, 0.98f, 1f);
+        EditorGUI.DrawRect(rect, topColor);
+        EditorGUI.DrawRect(new Rect(rect.x, rect.y + rect.height * 0.52f, rect.width, rect.height * 0.48f), stageColor);
+
+        DrawGlowBar(new Rect(rect.x, rect.y, rect.width, 3f), new Color(0.10f, 0.86f, 0.95f));
+        DrawGlowBar(new Rect(rect.x, rect.y + rect.height - 3f, rect.width, 3f), new Color(0.92f, 0.20f, 0.55f));
+
+        var spotlightWidth = Mathf.Min(220f, rect.width * 0.28f);
+        EditorGUI.DrawRect(new Rect(rect.x + rect.width - spotlightWidth, rect.y, spotlightWidth, rect.height), new Color(0.18f, 0.25f, 0.42f, 0.28f));
+        EditorGUI.DrawRect(new Rect(rect.x + rect.width - spotlightWidth * 0.48f, rect.y, spotlightWidth * 0.48f, rect.height), new Color(0.85f, 0.32f, 0.74f, 0.16f));
 
         var titleRect = new Rect(rect.x + 18f, rect.y + 14f, rect.width - 36f, 28f);
         GUI.Label(titleRect, "VLiveKitPackageManager", headerStyle);
 
         var subtitleRect = new Rect(rect.x + 18f, rect.y + 45f, rect.width - 36f, 20f);
         GUI.Label(subtitleRect, "Check versions, update packages, and jump to repositories or docs.", mutedStyle);
+
+        var badgeRect = new Rect(rect.x + 18f, rect.y + 74f, 112f, 20f);
+        EditorGUI.DrawRect(badgeRect, new Color(0.08f, 0.74f, 0.82f, 0.42f));
+        GUI.Label(badgeRect, "LIVE TOOLKIT", titleBadgeStyle);
+
+        var pulseRect = new Rect(badgeRect.xMax + 8f, badgeRect.y + 6f, rect.width - badgeRect.xMax - 32f, 6f);
+        DrawSignalLine(pulseRect);
+    }
+
+    private static void DrawGlowBar(Rect rect, Color color)
+    {
+        EditorGUI.DrawRect(rect, color);
+        EditorGUI.DrawRect(new Rect(rect.x, rect.y - 2f, rect.width, rect.height + 4f), new Color(color.r, color.g, color.b, 0.18f));
+    }
+
+    private static void DrawSignalLine(Rect rect)
+    {
+        EditorGUI.DrawRect(rect, new Color(0.15f, 0.18f, 0.20f, 0.75f));
+        var segments = Mathf.Max(1, Mathf.FloorToInt(rect.width / 48f));
+        for (var i = 0; i < segments; i++)
+        {
+            var x = rect.x + i * 48f;
+            var width = i % 2 == 0 ? 28f : 16f;
+            var color = i % 3 == 0 ? new Color(0.10f, 0.86f, 0.95f) : i % 3 == 1 ? new Color(0.92f, 0.20f, 0.55f) : new Color(1f, 0.72f, 0.24f);
+            EditorGUI.DrawRect(new Rect(x, rect.y, Mathf.Min(width, rect.xMax - x), rect.height), color);
+        }
     }
 
     private void DrawToolbar()
@@ -549,6 +593,11 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         if (GUILayout.Button("Update All", EditorStyles.toolbarButton, GUILayout.Width(90f)))
         {
             QueueRows(row => row.CanUpdate);
+        }
+
+        if (GUILayout.Button("Logs", EditorStyles.toolbarButton, GUILayout.Width(64f)))
+        {
+            VLiveKitErrorLogExporter.OpenWindow();
         }
 
         GUI.enabled = true;
@@ -604,9 +653,9 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private void DrawMetric(string label, string value, Color accent)
     {
-        EditorGUILayout.BeginVertical(cardStyle, GUILayout.Height(54f));
-        var rect = GUILayoutUtility.GetRect(120f, 6f, GUILayout.ExpandWidth(true));
-        EditorGUI.DrawRect(rect, accent);
+        EditorGUILayout.BeginVertical(cardStyle, GUILayout.Height(62f));
+        var rect = GUILayoutUtility.GetRect(120f, 8f, GUILayout.ExpandWidth(true));
+        DrawGlowBar(rect, accent);
         GUILayout.Label(value, new GUIStyle(EditorStyles.boldLabel) { fontSize = 18, alignment = TextAnchor.MiddleCenter });
         GUILayout.Label(label, new GUIStyle(mutedStyle) { alignment = TextAnchor.MiddleCenter });
         EditorGUILayout.EndVertical();
@@ -625,6 +674,8 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private void DrawPackageRow(PackageRow row)
     {
         EditorGUILayout.BeginVertical(cardStyle);
+        var accentRect = GUILayoutUtility.GetRect(1f, 2f, GUILayout.ExpandWidth(true));
+        EditorGUI.DrawRect(accentRect, GetRowAccentColor(row));
         EditorGUILayout.BeginHorizontal();
 
         DrawStatusBadge(row);
@@ -689,6 +740,26 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         var rect = GUILayoutUtility.GetRect(96f, 24f, GUILayout.Width(96f), GUILayout.Height(24f));
         EditorGUI.DrawRect(rect, color);
         GUI.Label(rect, label, badgeStyle);
+    }
+
+    private static Color GetRowAccentColor(PackageRow row)
+    {
+        if (row.CanUpdate)
+        {
+            return new Color(1f, 0.58f, 0.16f);
+        }
+
+        if (row.State == InstallState.Missing)
+        {
+            return new Color(0.95f, 0.22f, 0.28f);
+        }
+
+        if (row.IsLocal)
+        {
+            return new Color(0.38f, 0.56f, 0.96f);
+        }
+
+        return new Color(0.08f, 0.78f, 0.58f);
     }
 
     private void DrawVersionBlock(string label, string value)
@@ -851,8 +922,6 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         {
             return false;
         }
-
-        return false;
     }
 
     private static string ReadFileFromTgz(byte[] data, string path)

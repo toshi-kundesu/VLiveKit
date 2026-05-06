@@ -19,7 +19,7 @@ internal sealed class VLiveKitErrorLogExporter : EditorWindow
     private string lastOutputPath = "";
 
     [MenuItem(MenuRoot + "Error Log Exporter")]
-    private static void OpenWindow()
+    internal static void OpenWindow()
     {
         var window = GetWindow<VLiveKitErrorLogExporter>("VLiveKit Logs");
         window.minSize = new Vector2(680f, 420f);
@@ -200,18 +200,47 @@ internal sealed class VLiveKitErrorLogExporter : EditorWindow
         public string File { get; }
         public int Line { get; }
         public int Mode { get; }
-        public bool IsError { get { return (Mode & 1) != 0 || (Mode & 2) != 0 || (Mode & 16) != 0 || (Mode & 64) != 0 || Condition.IndexOf("Exception", StringComparison.OrdinalIgnoreCase) >= 0; } }
+        public bool IsError
+        {
+            get
+            {
+                return (Mode & 1) != 0 ||
+                    (Mode & 2) != 0 ||
+                    (Mode & 16) != 0 ||
+                    (Mode & 64) != 0 ||
+                    (Mode & 128) != 0 ||
+                    ContainsIgnoreCase(Condition, "Exception") ||
+                    (!IsWarning && ContainsIgnoreCase(Condition, "error")) ||
+                    ContainsIgnoreCase(StackTrace, "LogError");
+            }
+        }
+
+        public bool IsWarning
+        {
+            get
+            {
+                return (Mode & 8) != 0 ||
+                    ContainsIgnoreCase(Condition, "warning") ||
+                    ContainsIgnoreCase(StackTrace, "LogWarning");
+            }
+        }
+
         public string Kind
         {
             get
             {
-                if ((Mode & 8) != 0)
+                if (IsWarning && !IsError)
                 {
                     return "Warning";
                 }
 
                 return IsError ? "Error" : "Log";
             }
+        }
+
+        private static bool ContainsIgnoreCase(string value, string search)
+        {
+            return !string.IsNullOrEmpty(value) && value.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0;
         }
     }
 
@@ -245,8 +274,8 @@ internal sealed class VLiveKitErrorLogExporter : EditorWindow
                 for (var i = 0; i < count; i++)
                 {
                     var entry = Activator.CreateInstance(logEntryType);
-                    var ok = (bool)getEntryMethod.Invoke(null, new[] { (object)i, entry });
-                    if (!ok)
+                    var result = getEntryMethod.Invoke(null, new[] { (object)i, entry });
+                    if (result is bool ok && !ok)
                     {
                         continue;
                     }
@@ -270,19 +299,45 @@ internal sealed class VLiveKitErrorLogExporter : EditorWindow
         private static string GetString(Type type, object instance, string name)
         {
             var field = type.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            return field == null ? "" : field.GetValue(instance) as string ?? "";
+            if (field != null)
+            {
+                return field.GetValue(instance) as string ?? "";
+            }
+
+            var property = type.GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            return property == null ? "" : property.GetValue(instance, null) as string ?? "";
         }
 
         private static int GetInt(Type type, object instance, string name)
         {
             var field = type.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            if (field == null)
+            object value = null;
+            if (field != null)
+            {
+                value = field.GetValue(instance);
+            }
+            else
+            {
+                var property = type.GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (property != null)
+                {
+                    value = property.GetValue(instance, null);
+                }
+            }
+
+            if (value == null)
             {
                 return 0;
             }
 
-            var value = field.GetValue(instance);
-            return value is int intValue ? intValue : 0;
+            try
+            {
+                return Convert.ToInt32(value);
+            }
+            catch
+            {
+                return 0;
+            }
         }
 
         private static Type FindEditorType(string typeName)
