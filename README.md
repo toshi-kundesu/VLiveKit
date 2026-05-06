@@ -1,22 +1,10 @@
 # VLiveKit
 
-VLiveKit is a Unity installer package for adding the related VLiveKit packages together.
+VLiveKit is a Unity feature set for installing the related VLiveKit packages together.
 
-## Install
+Install this package when you want the virtual live production toolchain as one group instead of adding each module one by one.
 
-Add this package from Unity Package Manager:
-
-```text
-https://github.com/toshi-kundesu/VLiveKit.git
-```
-
-Then run:
-
-```text
-Tools > VLiveKit > Install All Packages
-```
-
-Unity Package Manager does not support Git dependencies between packages. This package therefore installs the related Git packages through the Unity Package Manager API.
+The related VLiveKit packages are resolved from the configured scoped registry.
 
 ## Included Packages
 
