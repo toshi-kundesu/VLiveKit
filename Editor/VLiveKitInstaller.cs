@@ -496,7 +496,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         headerStyle = new GUIStyle(EditorStyles.boldLabel)
         {
             fontSize = 20,
-            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.88f, 0.96f, 1f) : new Color(0.08f, 0.18f, 0.24f) }
+            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.88f, 0.96f, 1f) : new Color(0.05f, 0.13f, 0.16f) }
         };
         cardStyle = new GUIStyle("box")
         {
@@ -522,7 +522,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         {
             alignment = TextAnchor.MiddleCenter,
             fontSize = 10,
-            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.82f, 0.95f, 1f) : new Color(0.08f, 0.16f, 0.22f) },
+            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.82f, 0.96f, 1f) : new Color(0.05f, 0.13f, 0.16f) },
             padding = new RectOffset(8, 8, 2, 2)
         };
         stylesReady = true;
@@ -530,18 +530,10 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private void DrawHeader()
     {
-        var rect = GUILayoutUtility.GetRect(0f, 104f, GUILayout.ExpandWidth(true));
-        var topColor = EditorGUIUtility.isProSkin ? new Color(0.04f, 0.06f, 0.09f) : new Color(0.80f, 0.94f, 0.96f);
-        var stageColor = EditorGUIUtility.isProSkin ? new Color(0.08f, 0.16f, 0.20f) : new Color(0.92f, 0.98f, 1f);
-        EditorGUI.DrawRect(rect, topColor);
-        EditorGUI.DrawRect(new Rect(rect.x, rect.y + rect.height * 0.52f, rect.width, rect.height * 0.48f), stageColor);
-
-        DrawGlowBar(new Rect(rect.x, rect.y, rect.width, 3f), new Color(0.10f, 0.86f, 0.95f));
-        DrawGlowBar(new Rect(rect.x, rect.y + rect.height - 3f, rect.width, 3f), new Color(0.92f, 0.20f, 0.55f));
-
-        var spotlightWidth = Mathf.Min(220f, rect.width * 0.28f);
-        EditorGUI.DrawRect(new Rect(rect.x + rect.width - spotlightWidth, rect.y, spotlightWidth, rect.height), new Color(0.18f, 0.25f, 0.42f, 0.28f));
-        EditorGUI.DrawRect(new Rect(rect.x + rect.width - spotlightWidth * 0.48f, rect.y, spotlightWidth * 0.48f, rect.height), new Color(0.85f, 0.32f, 0.74f, 0.16f));
+        var rect = GUILayoutUtility.GetRect(0f, 96f, GUILayout.ExpandWidth(true));
+        EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.04f, 0.06f, 0.07f) : new Color(0.90f, 0.97f, 0.98f));
+        EditorGUI.DrawRect(new Rect(rect.x, rect.y, rect.width, 2f), AccentColor(1f));
+        EditorGUI.DrawRect(new Rect(rect.x, rect.y + rect.height - 2f, rect.width, 2f), AccentColor(0.75f));
 
         var titleRect = new Rect(rect.x + 18f, rect.y + 14f, rect.width - 36f, 28f);
         GUI.Label(titleRect, "VLiveKitPackageManager", headerStyle);
@@ -550,29 +542,32 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         GUI.Label(subtitleRect, "Check versions, update packages, and jump to repositories or docs.", mutedStyle);
 
         var badgeRect = new Rect(rect.x + 18f, rect.y + 74f, 112f, 20f);
-        EditorGUI.DrawRect(badgeRect, new Color(0.08f, 0.74f, 0.82f, 0.42f));
+        EditorGUI.DrawRect(badgeRect, AccentColor(0.34f));
         GUI.Label(badgeRect, "LIVE TOOLKIT", titleBadgeStyle);
 
         var pulseRect = new Rect(badgeRect.xMax + 8f, badgeRect.y + 6f, rect.width - badgeRect.xMax - 32f, 6f);
         DrawSignalLine(pulseRect);
     }
 
-    private static void DrawGlowBar(Rect rect, Color color)
+    private static Color AccentColor(float alpha)
     {
-        EditorGUI.DrawRect(rect, color);
-        EditorGUI.DrawRect(new Rect(rect.x, rect.y - 2f, rect.width, rect.height + 4f), new Color(color.r, color.g, color.b, 0.18f));
+        return new Color(0.10f, 0.86f, 0.95f, alpha);
+    }
+
+    private static void DrawAccentBar(Rect rect, float alpha)
+    {
+        EditorGUI.DrawRect(rect, AccentColor(alpha));
     }
 
     private static void DrawSignalLine(Rect rect)
     {
-        EditorGUI.DrawRect(rect, new Color(0.15f, 0.18f, 0.20f, 0.75f));
+        EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.10f, 0.12f, 0.13f) : new Color(0.78f, 0.91f, 0.93f));
         var segments = Mathf.Max(1, Mathf.FloorToInt(rect.width / 48f));
         for (var i = 0; i < segments; i++)
         {
             var x = rect.x + i * 48f;
-            var width = i % 2 == 0 ? 28f : 16f;
-            var color = i % 3 == 0 ? new Color(0.10f, 0.86f, 0.95f) : i % 3 == 1 ? new Color(0.92f, 0.20f, 0.55f) : new Color(1f, 0.72f, 0.24f);
-            EditorGUI.DrawRect(new Rect(x, rect.y, Mathf.Min(width, rect.xMax - x), rect.height), color);
+            var width = i % 2 == 0 ? 28f : 12f;
+            EditorGUI.DrawRect(new Rect(x, rect.y, Mathf.Min(width, rect.xMax - x), rect.height), AccentColor(i % 2 == 0 ? 0.90f : 0.45f));
         }
     }
 
@@ -608,9 +603,9 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         if (IsOperating)
         {
             var rect = GUILayoutUtility.GetRect(1f, 4f, GUILayout.ExpandWidth(true));
-            EditorGUI.DrawRect(rect, new Color(0.18f, 0.18f, 0.18f));
+            EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.11f, 0.12f, 0.13f) : new Color(0.78f, 0.91f, 0.93f));
             var fillRect = new Rect(rect.x, rect.y, rect.width * GetOperationProgress(), rect.height);
-            EditorGUI.DrawRect(fillRect, new Color(0.24f, 0.62f, 0.92f));
+            EditorGUI.DrawRect(fillRect, AccentColor(1f));
         }
     }
 
@@ -644,18 +639,18 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
 
         EditorGUILayout.BeginHorizontal();
-        DrawMetric("Installed", installed.ToString(), new Color(0.25f, 0.68f, 0.45f));
-        DrawMetric("Updates", updates.ToString(), new Color(0.95f, 0.58f, 0.18f));
-        DrawMetric("Missing", missing.ToString(), new Color(0.88f, 0.28f, 0.25f));
-        DrawMetric("Local", local.ToString(), new Color(0.35f, 0.55f, 0.90f));
+        DrawMetric("Installed", installed.ToString(), 0.90f);
+        DrawMetric("Updates", updates.ToString(), updates > 0 ? 1f : 0.42f);
+        DrawMetric("Missing", missing.ToString(), missing > 0 ? 1f : 0.42f);
+        DrawMetric("Local", local.ToString(), local > 0 ? 0.78f : 0.42f);
         EditorGUILayout.EndHorizontal();
     }
 
-    private void DrawMetric(string label, string value, Color accent)
+    private void DrawMetric(string label, string value, float accentAlpha)
     {
         EditorGUILayout.BeginVertical(cardStyle, GUILayout.Height(62f));
         var rect = GUILayoutUtility.GetRect(120f, 8f, GUILayout.ExpandWidth(true));
-        DrawGlowBar(rect, accent);
+        DrawAccentBar(rect, accentAlpha);
         GUILayout.Label(value, new GUIStyle(EditorStyles.boldLabel) { fontSize = 18, alignment = TextAnchor.MiddleCenter });
         GUILayout.Label(label, new GUIStyle(mutedStyle) { alignment = TextAnchor.MiddleCenter });
         EditorGUILayout.EndVertical();
@@ -736,9 +731,8 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private void DrawStatusBadge(PackageRow row)
     {
         var label = row.StatusLabel;
-        var color = row.StatusColor;
         var rect = GUILayoutUtility.GetRect(96f, 24f, GUILayout.Width(96f), GUILayout.Height(24f));
-        EditorGUI.DrawRect(rect, color);
+        EditorGUI.DrawRect(rect, GetRowAccentColor(row));
         GUI.Label(rect, label, badgeStyle);
     }
 
@@ -746,20 +740,20 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     {
         if (row.CanUpdate)
         {
-            return new Color(1f, 0.58f, 0.16f);
+            return AccentColor(1f);
         }
 
         if (row.State == InstallState.Missing)
         {
-            return new Color(0.95f, 0.22f, 0.28f);
+            return AccentColor(0.95f);
         }
 
         if (row.IsLocal)
         {
-            return new Color(0.38f, 0.56f, 0.96f);
+            return AccentColor(0.58f);
         }
 
-        return new Color(0.08f, 0.78f, 0.58f);
+        return AccentColor(0.72f);
     }
 
     private void DrawVersionBlock(string label, string value)
@@ -1226,29 +1220,6 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
                 }
 
                 return "Current";
-            }
-        }
-
-        public Color StatusColor
-        {
-            get
-            {
-                if (State == InstallState.Missing)
-                {
-                    return new Color(0.72f, 0.18f, 0.16f);
-                }
-
-                if (CanUpdate)
-                {
-                    return new Color(0.88f, 0.45f, 0.12f);
-                }
-
-                if (IsLocal)
-                {
-                    return new Color(0.22f, 0.42f, 0.72f);
-                }
-
-                return new Color(0.18f, 0.58f, 0.32f);
             }
         }
 
