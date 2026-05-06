@@ -576,40 +576,47 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
         headerStyle = new GUIStyle(EditorStyles.boldLabel)
         {
-            fontSize = 20,
-            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.88f, 0.96f, 1f) : new Color(0.05f, 0.13f, 0.16f) }
+            fontSize = 18,
+            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.91f, 0.93f, 0.94f) : new Color(0.10f, 0.12f, 0.13f) }
         };
-        cardStyle = new GUIStyle("box")
+        cardStyle = new GUIStyle(EditorStyles.helpBox)
         {
-            padding = new RectOffset(12, 12, 10, 10),
-            margin = new RectOffset(8, 8, 5, 5)
+            padding = new RectOffset(10, 10, 8, 8),
+            margin = new RectOffset(6, 6, 4, 4),
+            normal =
+            {
+                background = MakeSolidTexture(EditorGUIUtility.isProSkin ? new Color(0.155f, 0.155f, 0.155f) : new Color(0.88f, 0.89f, 0.90f))
+            }
         };
         badgeStyle = new GUIStyle(EditorStyles.boldLabel)
         {
             alignment = TextAnchor.MiddleCenter,
             fontSize = 10,
-            padding = new RectOffset(8, 8, 2, 2)
+            padding = new RectOffset(8, 8, 2, 2),
+            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.08f, 0.09f, 0.10f) : Color.white }
         };
         mutedStyle = new GUIStyle(EditorStyles.label)
         {
             wordWrap = false,
-            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.62f, 0.68f, 0.72f) : new Color(0.35f, 0.38f, 0.42f) }
+            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.62f, 0.65f, 0.67f) : new Color(0.35f, 0.37f, 0.39f) }
         };
         toolbarButtonStyle = new GUIStyle(EditorStyles.miniButton)
         {
-            fixedHeight = 26
+            fixedHeight = 24,
+            fontSize = 11
         };
         primaryButtonStyle = new GUIStyle(EditorStyles.miniButton)
         {
             alignment = TextAnchor.MiddleCenter,
             fontStyle = FontStyle.Bold,
-            fixedHeight = 30
+            fixedHeight = 28,
+            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.92f, 0.94f, 0.95f) : new Color(0.12f, 0.13f, 0.14f) }
         };
         titleBadgeStyle = new GUIStyle(EditorStyles.boldLabel)
         {
             alignment = TextAnchor.MiddleCenter,
             fontSize = 10,
-            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.82f, 0.96f, 1f) : new Color(0.05f, 0.13f, 0.16f) },
+            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.86f, 0.91f, 1f) : new Color(0.05f, 0.10f, 0.18f) },
             padding = new RectOffset(8, 8, 2, 2)
         };
         stylesReady = true;
@@ -617,29 +624,28 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private void DrawHeader()
     {
-        var rect = GUILayoutUtility.GetRect(0f, 106f, GUILayout.ExpandWidth(true));
-        EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.04f, 0.06f, 0.07f) : new Color(0.90f, 0.97f, 0.98f));
-        EditorGUI.DrawRect(new Rect(rect.x, rect.y, rect.width, 2f), AccentColor(1f));
-        EditorGUI.DrawRect(new Rect(rect.x, rect.y + rect.height - 2f, rect.width, 2f), AccentColor(0.75f));
+        var rect = GUILayoutUtility.GetRect(0f, 82f, GUILayout.ExpandWidth(true));
+        EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.105f, 0.105f, 0.105f) : new Color(0.92f, 0.93f, 0.94f));
+        EditorGUI.DrawRect(new Rect(rect.x, rect.y + rect.height - 1f, rect.width, 1f), AccentColor(0.80f));
 
-        var titleRect = new Rect(rect.x + 18f, rect.y + 14f, rect.width - 36f, 28f);
+        var titleRect = new Rect(rect.x + 16f, rect.y + 12f, rect.width - 320f, 24f);
         GUI.Label(titleRect, "VLiveKitPackageManager", headerStyle);
 
-        var subtitleRect = new Rect(rect.x + 18f, rect.y + 45f, rect.width - 36f, 20f);
+        var subtitleRect = new Rect(rect.x + 16f, rect.y + 39f, rect.width - 330f, 18f);
         GUI.Label(subtitleRect, "Check versions, update packages, and jump to repositories or docs.", mutedStyle);
 
-        var badgeRect = new Rect(rect.x + 18f, rect.y + 74f, 112f, 20f);
-        EditorGUI.DrawRect(badgeRect, AccentColor(0.34f));
-        GUI.Label(badgeRect, "LIVE TOOLKIT", titleBadgeStyle);
+        var badgeRect = new Rect(rect.x + 16f, rect.y + 58f, 100f, 18f);
+        EditorGUI.DrawRect(badgeRect, AccentColor(0.22f));
+        GUI.Label(badgeRect, "PACKAGE", titleBadgeStyle);
 
-        var updateAllRect = new Rect(rect.xMax - 274f, rect.y + 18f, 124f, 30f);
+        var updateAllRect = new Rect(rect.xMax - 266f, rect.y + 14f, 120f, 28f);
         GUI.enabled = !isChecking && addRequest == null && removeRequest == null;
         if (GUI.Button(updateAllRect, "Update All", primaryButtonStyle))
         {
             QueueRows(row => row.CanUpdate);
         }
 
-        var refreshRect = new Rect(rect.xMax - 142f, rect.y + 18f, 124f, 30f);
+        var refreshRect = new Rect(rect.xMax - 138f, rect.y + 14f, 120f, 28f);
         GUI.enabled = !isChecking && addRequest == null && removeRequest == null;
         if (GUI.Button(refreshRect, "Refresh", primaryButtonStyle))
         {
@@ -648,13 +654,21 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
         GUI.enabled = true;
 
-        var statusRect = new Rect(rect.xMax - 420f, rect.y + 55f, 402f, 20f);
+        var statusRect = new Rect(rect.xMax - 424f, rect.y + 49f, 406f, 18f);
         GUI.Label(statusRect, catalogSource + " - " + statusText, new GUIStyle(mutedStyle) { alignment = TextAnchor.MiddleRight });
     }
 
     private static Color AccentColor(float alpha)
     {
-        return new Color(0.10f, 0.86f, 0.95f, alpha);
+        return new Color(0.08f, 0.38f, 0.86f, alpha);
+    }
+
+    private static Texture2D MakeSolidTexture(Color color)
+    {
+        var texture = new Texture2D(1, 1) { hideFlags = HideFlags.HideAndDontSave };
+        texture.SetPixel(0, 0, color);
+        texture.Apply();
+        return texture;
     }
 
     private static void DrawAccentBar(Rect rect, float alpha)
@@ -684,7 +698,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         if (IsOperating)
         {
             var rect = GUILayoutUtility.GetRect(1f, 4f, GUILayout.ExpandWidth(true));
-            EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.11f, 0.12f, 0.13f) : new Color(0.78f, 0.91f, 0.93f));
+            EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.11f, 0.12f, 0.13f) : new Color(0.78f, 0.79f, 0.81f));
             var fillRect = new Rect(rect.x, rect.y, rect.width * GetOperationProgress(), rect.height);
             EditorGUI.DrawRect(fillRect, AccentColor(1f));
         }
@@ -719,7 +733,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             }
         }
 
-        EditorGUILayout.BeginHorizontal();
+        EditorGUILayout.BeginHorizontal(GUILayout.Height(58f));
         DrawMetric("Installed", installed.ToString(), 0.90f);
         DrawMetric("Updates", updates.ToString(), updates > 0 ? 1f : 0.42f);
         DrawMetric("Missing", missing.ToString(), missing > 0 ? 1f : 0.42f);
@@ -729,10 +743,11 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private void DrawMetric(string label, string value, float accentAlpha)
     {
-        EditorGUILayout.BeginVertical(cardStyle, GUILayout.Height(62f));
-        var rect = GUILayoutUtility.GetRect(120f, 8f, GUILayout.ExpandWidth(true));
+        EditorGUILayout.BeginVertical(cardStyle, GUILayout.Height(52f));
+        var rect = GUILayoutUtility.GetRect(120f, 3f, GUILayout.ExpandWidth(true));
         DrawAccentBar(rect, accentAlpha);
-        GUILayout.Label(value, new GUIStyle(EditorStyles.boldLabel) { fontSize = 18, alignment = TextAnchor.MiddleCenter });
+        GUILayout.Space(2f);
+        GUILayout.Label(value, new GUIStyle(EditorStyles.boldLabel) { fontSize = 17, alignment = TextAnchor.MiddleCenter });
         GUILayout.Label(label, new GUIStyle(mutedStyle) { alignment = TextAnchor.MiddleCenter });
         EditorGUILayout.EndVertical();
     }
@@ -752,6 +767,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         EditorGUILayout.BeginVertical(cardStyle);
         var accentRect = GUILayoutUtility.GetRect(1f, 2f, GUILayout.ExpandWidth(true));
         EditorGUI.DrawRect(accentRect, GetRowAccentColor(row));
+        GUILayout.Space(2f);
         EditorGUILayout.BeginHorizontal();
 
         DrawStatusBadge(row);
