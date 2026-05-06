@@ -490,7 +490,14 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private void EnsureStyles()
     {
-        if (stylesReady)
+        if (stylesReady &&
+            headerStyle != null &&
+            cardStyle != null &&
+            badgeStyle != null &&
+            mutedStyle != null &&
+            toolbarButtonStyle != null &&
+            primaryButtonStyle != null &&
+            titleBadgeStyle != null)
         {
             return;
         }
