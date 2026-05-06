@@ -16,4 +16,3 @@ The related VLiveKit packages are resolved from the configured scoped registry.
 - VLive Live Toon
 - VLive Performer Act
 - VLiveKit StageBuilder
-- VLive Third Party Utilities
