@@ -19,6 +19,12 @@ The window can:
 - show update progress while batch operations are running
 - detect local `Packages` folders, submodules, and `Assets/toshi.VLiveKit` folders without replacing them automatically
 
+Error logs can be exported from:
+
+`toshi > VLiveKit > Error Log Exporter`
+
+The exporter can copy or write Unity Console errors to `Logs/VLiveKitConsoleLogs` so they can be shared without selecting console entries one by one.
+
 ## Package
 
 - Package name: `com.toshi.vlivekit`
@@ -41,7 +47,7 @@ Configure the scoped registry in `Packages/manifest.json`.
     }
   ],
   "dependencies": {
-    "com.toshi.vlivekit": "0.1.6"
+    "com.toshi.vlivekit": "0.1.7"
   }
 }
 ```
