@@ -1,308 +1,640 @@
 #if UNITY_EDITOR
+using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.PackageManager;
 using UnityEditor.PackageManager.Requests;
 using UnityEngine;
+using UnityEngine.Networking;
 
 [InitializeOnLoad]
-internal static class VLiveKitInstaller
+internal sealed class VLiveKitInstallerWindow : EditorWindow
 {
     private const string MenuRoot = "toshi/VLiveKit/";
-    private static string PromptEditorPrefsKey => "VLiveKitInstaller.PromptShown." + Application.dataPath;
+    private const string RegistryUrl = "https://registry.npmjs.org/";
+    private const string PromptPrefsKeyPrefix = "VLiveKitInstaller.PromptShown.";
 
     private static readonly PackageSpec[] Packages =
     {
-        new("com.toshi.vlivekit.artnetlink", "VLiveKit ArtNetLink", "https://github.com/toshi-kundesu/VLiveKit_ArtNetLink.git?path=/Assets/toshi.VLiveKit/ArtNetLink", "Packages/VLiveKit_ArtNetLink", "Assets/toshi.VLiveKit/ArtNetLink"),
-        new("com.toshi.vlivekit.cameraunit", "VLive Camera Unit", "https://github.com/toshi-kundesu/VLiveKit_camera.git?path=/Assets/toshi.VLiveKit/VLiveCameraUnit", "Packages/VLiveKit_camera", "Assets/toshi.VLiveKit/VLiveCameraUnit"),
-        new("com.toshi.vlivekit.ledvision", "VLiveKit LED Vision", "https://github.com/toshi-kundesu/VLiveKit_LEDVision.git?path=/Assets/toshi.VLiveKit/LEDVision", "Packages/VLiveKit_LEDVision", "Assets/toshi.VLiveKit/LEDVision"),
-        new("com.toshi.vlivekit.lensfilters", "VLive Lens Filters", "https://github.com/toshi-kundesu/VLiveKit_LiveLensFilters.git?path=/Assets/toshi.VLiveKit/LiveLensFilters", "Packages/VLiveKit_LiveLensFilters", "Assets/toshi.VLiveKit/LiveLensFilters"),
-        new("com.toshi.vlivekit.livetoon", "VLive Live Toon", "https://github.com/toshi-kundesu/VLiveKit_LiveToon.git?path=/Assets/toshi.VLiveKit/livetoon", "Packages/VLiveKit_LiveToon", "Assets/toshi.VLiveKit/livetoon"),
-        new("com.toshi.vlivekit.performeract", "VLive Performer Act", "https://github.com/toshi-kundesu/VLiveKit_PerformerAct.git?path=/Assets/toshi.VLiveKit/PerformerAct", "Packages/VLiveKit_PerformerAct", "Assets/toshi.VLiveKit/PerformerAct"),
-        new("com.toshi.vlivekit.testassetscontainer", "VLiveKit Test Assets Container", "https://github.com/toshi-kundesu/VLiveKit_TestAssetsContainer.git?path=/Assets/toshi.VLiveKit/TestAssetsContainer", "Packages/VLiveKit_TestAssetsContainer", "Assets/toshi.VLiveKit/TestAssetsContainer"),
-        new("com.toshi.vlivekit.stagebuilder", "VLiveKit StageBuilder", "https://github.com/toshi-kundesu/VLiveKit_StageBuilder.git?path=/Assets/toshi.VLiveKit/StageBuilder", "Packages/VLiveKit_StageBuilder", "Assets/toshi.VLiveKit/StageBuilder"),
-        new("com.toshi.vlivekit.stageeffect", "VLiveKit StageEffect", "https://github.com/toshi-kundesu/VLiveKit_StageEffect.git?path=/Assets/toshi.VLiveKit/StageEffect", "Packages/VLiveKit_StageEffect", "Assets/toshi.VLiveKit/StageEffect"),
-        new("com.toshi.vlivekit.videorack", "VLiveKit VideoRack", "https://github.com/toshi-kundesu/VLiveKit_VideoRack.git?path=/Assets/toshi.VLiveKit/VideoRack", "Packages/VLiveKit_VideoRack", "Assets/toshi.VLiveKit/VideoRack"),
+        new PackageSpec("com.toshi.vlivekit.artnetlink", "VLiveKit ArtNetLink", "Packages/VLiveKit_ArtNetLink", "Assets/toshi.VLiveKit/ArtNetLink"),
+        new PackageSpec("com.toshi.vlivekit.cameraunit", "VLive Camera Unit", "Packages/VLiveKit_camera", "Assets/toshi.VLiveKit/VLiveCameraUnit"),
+        new PackageSpec("com.toshi.vlivekit.ledvision", "VLiveKit LED Vision", "Packages/VLiveKit_LEDVision", "Assets/toshi.VLiveKit/LEDVision"),
+        new PackageSpec("com.toshi.vlivekit.lensfilters", "VLive Lens Filters", "Packages/VLiveKit_LiveLensFilters", "Assets/toshi.VLiveKit/LiveLensFilters"),
+        new PackageSpec("com.toshi.vlivekit.livetoon", "VLive Live Toon", "Packages/VLiveKit_LiveToon", "Assets/toshi.VLiveKit/livetoon"),
+        new PackageSpec("com.toshi.vlivekit.performeract", "VLive Performer Act", "Packages/VLiveKit_PerformerAct", "Assets/toshi.VLiveKit/PerformerAct"),
+        new PackageSpec("com.toshi.vlivekit.testassetscontainer", "VLiveKit Test Assets Container", "Packages/VLiveKit_TestAssetsContainer", "Assets/toshi.VLiveKit/TestAssetsContainer"),
+        new PackageSpec("com.toshi.vlivekit.stagebuilder", "VLiveKit StageBuilder", "Packages/VLiveKit_StageBuilder", "Assets/toshi.VLiveKit/StageBuilder"),
+        new PackageSpec("com.toshi.vlivekit.stageeffect", "VLiveKit StageEffect", "Packages/VLiveKit_StageEffect", "Assets/toshi.VLiveKit/StageEffect"),
+        new PackageSpec("com.toshi.vlivekit.videorack", "VLiveKit VideoRack", "Packages/VLiveKit_VideoRack", "Assets/toshi.VLiveKit/VideoRack"),
     };
 
-    private static readonly Queue<PackageSpec> PendingPackages = new();
-    private static readonly List<PackageStatus> LastStatuses = new();
-    private static AddRequest currentRequest;
-    private static ListRequest listRequest;
-    private static PackageSpec currentPackage;
-    private static StatusCheckMode statusCheckMode;
-    private static int totalCount;
-    private static int installedCount;
+    private static bool promptedThisSession;
 
-    static VLiveKitInstaller()
+    private readonly List<PackageRow> rows = new List<PackageRow>();
+    private readonly Queue<PackageRow> pendingOperations = new Queue<PackageRow>();
+    private readonly List<LatestVersionRequest> latestRequests = new List<LatestVersionRequest>();
+
+    private Vector2 scrollPosition;
+    private ListRequest listRequest;
+    private AddRequest addRequest;
+    private PackageRow activeOperation;
+    private GUIStyle headerStyle;
+    private GUIStyle cardStyle;
+    private GUIStyle badgeStyle;
+    private GUIStyle mutedStyle;
+    private GUIStyle toolbarButtonStyle;
+    private bool stylesReady;
+    private string statusText = "Ready";
+    private bool isChecking;
+
+    static VLiveKitInstallerWindow()
     {
         EditorApplication.delayCall += ShowInstallPromptOnce;
     }
 
-    [MenuItem(MenuRoot + "Install Missing Packages")]
-    private static void InstallMissingPackages()
+    [MenuItem(MenuRoot + "Package Manager")]
+    private static void OpenWindow()
     {
-        StartStatusCheck(StatusCheckMode.InstallMissing);
+        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKit");
+        window.minSize = new Vector2(760f, 480f);
+        window.Show();
+        window.Refresh();
     }
 
     [MenuItem(MenuRoot + "Check Install Status")]
     private static void CheckInstallStatus()
     {
-        StartStatusCheck(StatusCheckMode.ShowStatusOnly);
+        OpenWindow();
+    }
+
+    [MenuItem(MenuRoot + "Install Missing Packages")]
+    private static void InstallMissingPackages()
+    {
+        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKit");
+        window.minSize = new Vector2(760f, 480f);
+        window.Show();
+        window.RefreshAndInstallMissing();
     }
 
     [MenuItem(MenuRoot + "Open Installer Dialog")]
     private static void OpenInstallerDialog()
     {
-        StartStatusCheck(StatusCheckMode.ShowPrompt);
+        OpenWindow();
     }
 
     private static void ShowInstallPromptOnce()
     {
-        if (EditorPrefs.GetBool(PromptEditorPrefsKey, false))
+        if (promptedThisSession)
         {
             return;
         }
 
-        EditorPrefs.SetBool(PromptEditorPrefsKey, true);
-        StartStatusCheck(StatusCheckMode.ShowPrompt);
+        promptedThisSession = true;
+        var key = PromptPrefsKeyPrefix + Application.dataPath;
+        if (EditorPrefs.GetBool(key, false))
+        {
+            return;
+        }
+
+        var result = EditorUtility.DisplayDialogComplex(
+            "VLiveKit",
+            "Open the VLiveKit Package Manager to check installed packages and available updates?",
+            "Open",
+            "Later",
+            "Do Not Show Again");
+
+        if (result == 0)
+        {
+            OpenWindow();
+        }
+        else if (result == 2)
+        {
+            EditorPrefs.SetBool(key, true);
+        }
     }
 
-    private static void StartStatusCheck(StatusCheckMode mode)
+    private void OnEnable()
     {
-        if (currentRequest != null)
-        {
-            Debug.LogWarning("VLiveKit package installation is already running.");
-            return;
-        }
-
-        if (listRequest != null)
-        {
-            Debug.LogWarning("VLiveKit package status check is already running.");
-            return;
-        }
-
-        statusCheckMode = mode;
-        EditorUtility.DisplayProgressBar("VLiveKit Installer", "Checking installed packages...", 0f);
-        listRequest = Client.List(true, false);
-        EditorApplication.update += UpdateStatusCheck;
+        EnsureRows();
+        EditorApplication.update += UpdateRequests;
     }
 
-    private static void UpdateStatusCheck()
+    private void OnDisable()
+    {
+        EditorApplication.update -= UpdateRequests;
+        DisposeLatestRequests();
+    }
+
+    private void OnGUI()
+    {
+        EnsureStyles();
+        DrawHeader();
+        DrawToolbar();
+        DrawSummary();
+        DrawPackageList();
+        DrawFooter();
+    }
+
+    private void RefreshAndInstallMissing()
+    {
+        Refresh();
+        statusText = "Checking before installing missing packages...";
+        EditorApplication.delayCall += QueueMissingAfterRefresh;
+    }
+
+    private void QueueMissingAfterRefresh()
+    {
+        if (isChecking || listRequest != null || latestRequests.Count > 0)
+        {
+            EditorApplication.delayCall += QueueMissingAfterRefresh;
+            return;
+        }
+
+        QueueRows(row => row.State == InstallState.Missing);
+    }
+
+    private void Refresh()
+    {
+        if (isChecking || addRequest != null)
+        {
+            return;
+        }
+
+        EnsureRows();
+        isChecking = true;
+        statusText = "Checking installed packages...";
+        foreach (var row in rows)
+        {
+            row.ResetRuntimeState();
+        }
+
+        listRequest = Client.List(true, false);
+        Repaint();
+    }
+
+    private void UpdateRequests()
+    {
+        UpdateListRequest();
+        UpdateLatestRequests();
+        UpdateAddRequest();
+    }
+
+    private void UpdateListRequest()
     {
         if (listRequest == null || !listRequest.IsCompleted)
         {
             return;
         }
 
-        EditorApplication.update -= UpdateStatusCheck;
-        EditorUtility.ClearProgressBar();
-
         if (listRequest.Status == StatusCode.Success)
         {
-            RefreshStatuses(listRequest.Result);
+            ApplyPackageCollection(listRequest.Result);
+            statusText = "Checking latest versions...";
         }
         else
         {
             var errorMessage = listRequest.Error != null ? listRequest.Error.message : "Unknown Package Manager error.";
-            Debug.LogWarning($"Package Manager status check failed. Falling back to manifest and asset checks. {errorMessage}");
-            RefreshStatuses(null);
+            Debug.LogWarning("VLiveKit package check failed. Falling back to manifest and local folders. " + errorMessage);
+            ApplyPackageCollection(null);
+            statusText = "Package Manager check failed; using fallback checks.";
         }
 
         listRequest = null;
-
-        switch (statusCheckMode)
-        {
-            case StatusCheckMode.InstallMissing:
-                QueueMissingPackages();
-                break;
-            case StatusCheckMode.ShowStatusOnly:
-                ShowStatusDialog();
-                break;
-            default:
-                ShowInstallPrompt();
-                break;
-        }
+        StartLatestVersionRequests();
+        Repaint();
     }
 
-    private static void RefreshStatuses(PackageCollection packageCollection)
+    private void UpdateLatestRequests()
     {
-        LastStatuses.Clear();
+        if (latestRequests.Count == 0)
+        {
+            return;
+        }
 
-        var resolvedPackageNames = new HashSet<string>();
+        for (var i = latestRequests.Count - 1; i >= 0; i--)
+        {
+            var latestRequest = latestRequests[i];
+            if (!latestRequest.Request.isDone)
+            {
+                continue;
+            }
+
+            latestRequest.Row.LatestCheckState = LatestState.Done;
+            if (latestRequest.Request.result == UnityWebRequest.Result.Success)
+            {
+                latestRequest.Row.LatestVersion = ParseLatestVersion(latestRequest.Request.downloadHandler.text);
+                if (string.IsNullOrEmpty(latestRequest.Row.LatestVersion))
+                {
+                    latestRequest.Row.LatestCheckState = LatestState.Failed;
+                    latestRequest.Row.Message = "Latest version was not found.";
+                }
+            }
+            else
+            {
+                latestRequest.Row.LatestCheckState = LatestState.Failed;
+                latestRequest.Row.Message = latestRequest.Request.error;
+            }
+
+            latestRequest.Request.Dispose();
+            latestRequests.RemoveAt(i);
+        }
+
+        if (latestRequests.Count == 0)
+        {
+            isChecking = false;
+            statusText = "Status is up to date.";
+        }
+
+        Repaint();
+    }
+
+    private void UpdateAddRequest()
+    {
+        if (addRequest == null || !addRequest.IsCompleted)
+        {
+            return;
+        }
+
+        if (addRequest.Status == StatusCode.Success)
+        {
+            activeOperation.State = InstallState.PackageManager;
+            activeOperation.InstalledVersion = addRequest.Result.version;
+            activeOperation.Message = "Installed " + addRequest.Result.version;
+            statusText = "Installed " + activeOperation.Spec.DisplayName;
+        }
+        else
+        {
+            var errorMessage = addRequest.Error != null ? addRequest.Error.message : "Unknown Package Manager error.";
+            activeOperation.Message = errorMessage;
+            statusText = "Failed: " + activeOperation.Spec.DisplayName;
+            Debug.LogError("Failed to install/update " + activeOperation.Spec.DisplayName + ": " + errorMessage);
+        }
+
+        addRequest = null;
+        activeOperation = null;
+        StartNextOperation();
+        Repaint();
+    }
+
+    private void ApplyPackageCollection(PackageCollection packageCollection)
+    {
+        var packageVersions = new Dictionary<string, string>();
         if (packageCollection != null)
         {
             foreach (var packageInfo in packageCollection)
             {
-                resolvedPackageNames.Add(packageInfo.name);
+                packageVersions[packageInfo.name] = packageInfo.version;
             }
         }
 
         var manifestJson = ReadManifestJson();
+        foreach (var row in rows)
+        {
+            if (packageVersions.TryGetValue(row.Spec.PackageName, out var version))
+            {
+                row.State = InstallState.PackageManager;
+                row.InstalledVersion = version;
+                row.Message = "Installed by Package Manager";
+                continue;
+            }
+
+            if (!string.IsNullOrEmpty(manifestJson) && manifestJson.Contains("\"" + row.Spec.PackageName + "\""))
+            {
+                row.State = InstallState.Manifest;
+                row.InstalledVersion = ReadLocalPackageVersion(row.Spec) ?? "manifest";
+                row.Message = "Found in manifest";
+                continue;
+            }
+
+            if (Directory.Exists(ToProjectPath(row.Spec.PackageFolderPath)))
+            {
+                row.State = InstallState.LocalPackage;
+                row.InstalledVersion = ReadLocalPackageVersion(row.Spec) ?? "local";
+                row.Message = "Local package or submodule";
+                continue;
+            }
+
+            if (AssetDatabase.IsValidFolder(row.Spec.AssetFolderPath) || Directory.Exists(ToProjectPath(row.Spec.AssetFolderPath)))
+            {
+                row.State = InstallState.AssetsFolder;
+                row.InstalledVersion = "assets";
+                row.Message = "Assets folder";
+                continue;
+            }
+
+            row.State = InstallState.Missing;
+            row.InstalledVersion = "";
+            row.Message = "Not installed";
+        }
+    }
+
+    private void StartLatestVersionRequests()
+    {
+        DisposeLatestRequests();
+
+        foreach (var row in rows)
+        {
+            row.LatestCheckState = LatestState.Checking;
+            var request = UnityWebRequest.Get(RegistryUrl + row.Spec.PackageName);
+            request.timeout = 20;
+            request.SendWebRequest();
+            latestRequests.Add(new LatestVersionRequest(row, request));
+        }
+    }
+
+    private void QueueRows(Predicate<PackageRow> predicate)
+    {
+        if (addRequest != null)
+        {
+            return;
+        }
+
+        pendingOperations.Clear();
+        foreach (var row in rows)
+        {
+            if (predicate(row) && row.CanInstallFromRegistry)
+            {
+                pendingOperations.Enqueue(row);
+            }
+        }
+
+        if (pendingOperations.Count == 0)
+        {
+            statusText = "Nothing to install or update.";
+            Repaint();
+            return;
+        }
+
+        StartNextOperation();
+    }
+
+    private void StartNextOperation()
+    {
+        if (addRequest != null)
+        {
+            return;
+        }
+
+        if (pendingOperations.Count == 0)
+        {
+            Refresh();
+            return;
+        }
+
+        activeOperation = pendingOperations.Dequeue();
+        var version = string.IsNullOrEmpty(activeOperation.LatestVersion) ? "latest" : activeOperation.LatestVersion;
+        var packageId = activeOperation.Spec.PackageName + "@" + version;
+        activeOperation.Message = "Adding " + packageId;
+        statusText = activeOperation.Message;
+        addRequest = Client.Add(packageId);
+    }
+
+    private void EnsureRows()
+    {
+        if (rows.Count > 0)
+        {
+            return;
+        }
+
         foreach (var package in Packages)
         {
-            LastStatuses.Add(GetPackageStatus(package, resolvedPackageNames, manifestJson));
+            rows.Add(new PackageRow(package));
         }
     }
 
-    private static PackageStatus GetPackageStatus(PackageSpec package, HashSet<string> resolvedPackageNames, string manifestJson)
+    private void EnsureStyles()
     {
-        if (resolvedPackageNames.Contains(package.PackageName))
+        if (stylesReady)
         {
-            return new PackageStatus(package, InstallState.PackageManager);
-        }
-
-        if (!string.IsNullOrEmpty(manifestJson) && manifestJson.Contains("\"" + package.PackageName + "\""))
-        {
-            return new PackageStatus(package, InstallState.Manifest);
-        }
-
-        if (Directory.Exists(ToProjectPath(package.PackageFolderPath)))
-        {
-            return new PackageStatus(package, InstallState.PackageFolderOrSubmodule);
-        }
-
-        if (AssetDatabase.IsValidFolder(package.AssetFolderPath) || Directory.Exists(ToProjectPath(package.AssetFolderPath)))
-        {
-            return new PackageStatus(package, InstallState.AssetsFolder);
-        }
-
-        return new PackageStatus(package, InstallState.Missing);
-    }
-
-    private static void ShowInstallPrompt()
-    {
-        var missingCount = GetMissingCount();
-        var summary = BuildStatusSummary();
-
-        if (missingCount == 0)
-        {
-            EditorUtility.DisplayDialog("VLiveKit Installer", "All VLiveKit packages are already present.\n\n" + summary, "OK");
             return;
         }
 
-        var result = EditorUtility.DisplayDialogComplex(
-            "VLiveKit Installer",
-            $"{missingCount} VLiveKit package(s) are not installed yet.\n\n{summary}\nInstall missing packages now?",
-            "Install Missing",
-            "Later",
-            "Status Only");
-
-        if (result == 0)
+        headerStyle = new GUIStyle(EditorStyles.boldLabel)
         {
-            QueueMissingPackages();
-            return;
-        }
-
-        if (result == 2)
+            fontSize = 20,
+            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.88f, 0.96f, 1f) : new Color(0.08f, 0.18f, 0.24f) }
+        };
+        cardStyle = new GUIStyle("box")
         {
-            ShowStatusDialog();
-        }
+            padding = new RectOffset(12, 12, 10, 10),
+            margin = new RectOffset(8, 8, 5, 5)
+        };
+        badgeStyle = new GUIStyle(EditorStyles.boldLabel)
+        {
+            alignment = TextAnchor.MiddleCenter,
+            fontSize = 10,
+            padding = new RectOffset(8, 8, 2, 2)
+        };
+        mutedStyle = new GUIStyle(EditorStyles.label)
+        {
+            wordWrap = false,
+            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.62f, 0.68f, 0.72f) : new Color(0.35f, 0.38f, 0.42f) }
+        };
+        toolbarButtonStyle = new GUIStyle(EditorStyles.miniButton)
+        {
+            fixedHeight = 26
+        };
+        stylesReady = true;
     }
 
-    private static void ShowStatusDialog()
+    private void DrawHeader()
     {
-        EditorUtility.DisplayDialog("VLiveKit Installer", BuildStatusSummary(), "OK");
+        var rect = GUILayoutUtility.GetRect(0f, 86f, GUILayout.ExpandWidth(true));
+        EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.08f, 0.12f, 0.15f) : new Color(0.82f, 0.93f, 0.98f));
+
+        var titleRect = new Rect(rect.x + 18f, rect.y + 14f, rect.width - 36f, 28f);
+        GUI.Label(titleRect, "VLiveKit Package Manager", headerStyle);
+
+        var subtitleRect = new Rect(rect.x + 18f, rect.y + 45f, rect.width - 36f, 20f);
+        GUI.Label(subtitleRect, "Check installed packages, compare latest registry versions, and install updates on demand.", mutedStyle);
     }
 
-    private static void QueueMissingPackages()
+    private void DrawToolbar()
     {
-        PendingPackages.Clear();
-        foreach (var status in LastStatuses)
+        EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+        GUI.enabled = !isChecking && addRequest == null;
+        if (GUILayout.Button("Refresh", EditorStyles.toolbarButton, GUILayout.Width(80f)))
         {
-            if (!status.IsInstalled)
+            Refresh();
+        }
+
+        if (GUILayout.Button("Install Missing", EditorStyles.toolbarButton, GUILayout.Width(110f)))
+        {
+            QueueRows(row => row.State == InstallState.Missing);
+        }
+
+        if (GUILayout.Button("Update All", EditorStyles.toolbarButton, GUILayout.Width(90f)))
+        {
+            QueueRows(row => row.CanUpdate);
+        }
+
+        GUI.enabled = true;
+        GUILayout.FlexibleSpace();
+        GUILayout.Label(statusText, mutedStyle);
+        EditorGUILayout.EndHorizontal();
+    }
+
+    private void DrawSummary()
+    {
+        var installed = 0;
+        var missing = 0;
+        var updates = 0;
+        var local = 0;
+
+        foreach (var row in rows)
+        {
+            if (row.State == InstallState.Missing)
             {
-                PendingPackages.Enqueue(status.Package);
+                missing++;
+            }
+            else
+            {
+                installed++;
+            }
+
+            if (row.CanUpdate)
+            {
+                updates++;
+            }
+
+            if (row.IsLocal)
+            {
+                local++;
             }
         }
 
-        totalCount = PendingPackages.Count;
-        installedCount = 0;
-
-        if (totalCount == 0)
-        {
-            Debug.Log("All VLiveKit packages are already present.");
-            EditorUtility.DisplayDialog("VLiveKit Installer", "All VLiveKit packages are already present.", "OK");
-            return;
-        }
-
-        EditorApplication.update += UpdateInstallQueue;
-        InstallNextPackage();
+        EditorGUILayout.BeginHorizontal();
+        DrawMetric("Installed", installed.ToString(), new Color(0.25f, 0.68f, 0.45f));
+        DrawMetric("Updates", updates.ToString(), new Color(0.95f, 0.58f, 0.18f));
+        DrawMetric("Missing", missing.ToString(), new Color(0.88f, 0.28f, 0.25f));
+        DrawMetric("Local", local.ToString(), new Color(0.35f, 0.55f, 0.90f));
+        EditorGUILayout.EndHorizontal();
     }
 
-    private static void UpdateInstallQueue()
+    private void DrawMetric(string label, string value, Color accent)
     {
-        if (currentRequest == null || !currentRequest.IsCompleted)
-        {
-            return;
-        }
-
-        if (currentRequest.Status == StatusCode.Success)
-        {
-            installedCount++;
-            Debug.Log($"Installed {currentPackage.DisplayName}: {currentRequest.Result.packageId}");
-            InstallNextPackage();
-            return;
-        }
-
-        var errorMessage = currentRequest.Error != null ? currentRequest.Error.message : "Unknown Package Manager error.";
-        CleanupInstallQueue();
-        Debug.LogError($"Failed to install {currentPackage.DisplayName}: {errorMessage}");
-        EditorUtility.DisplayDialog("VLiveKit Installer", $"Failed to install {currentPackage.DisplayName}.\n\n{errorMessage}", "OK");
+        EditorGUILayout.BeginVertical(cardStyle, GUILayout.Height(54f));
+        var rect = GUILayoutUtility.GetRect(120f, 6f, GUILayout.ExpandWidth(true));
+        EditorGUI.DrawRect(rect, accent);
+        GUILayout.Label(value, new GUIStyle(EditorStyles.boldLabel) { fontSize = 18, alignment = TextAnchor.MiddleCenter });
+        GUILayout.Label(label, new GUIStyle(mutedStyle) { alignment = TextAnchor.MiddleCenter });
+        EditorGUILayout.EndVertical();
     }
 
-    private static void InstallNextPackage()
+    private void DrawPackageList()
     {
-        currentRequest = null;
-
-        if (PendingPackages.Count == 0)
+        scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
+        foreach (var row in rows)
         {
-            CleanupInstallQueue();
-            Debug.Log("VLiveKit package installation completed.");
-            EditorUtility.DisplayDialog("VLiveKit Installer", "Missing VLiveKit packages were added.", "OK");
-            return;
+            DrawPackageRow(row);
         }
-
-        currentPackage = PendingPackages.Dequeue();
-        var currentNumber = installedCount + 1;
-        EditorUtility.DisplayProgressBar(
-            "VLiveKit Installer",
-            $"Adding {currentPackage.DisplayName} ({currentNumber}/{totalCount})",
-            (float)installedCount / totalCount);
-
-        Debug.Log($"Adding {currentPackage.DisplayName} from {currentPackage.PackageUrl}");
-        currentRequest = Client.Add(currentPackage.PackageUrl);
+        EditorGUILayout.EndScrollView();
     }
 
-    private static string BuildStatusSummary()
+    private void DrawPackageRow(PackageRow row)
     {
-        var builder = new StringBuilder();
-        foreach (var status in LastStatuses)
-        {
-            builder.Append(status.IsInstalled ? "[OK] " : "[Missing] ");
-            builder.Append(status.Package.DisplayName);
-            builder.Append(" - ");
-            builder.Append(GetStateLabel(status.State));
-            builder.AppendLine();
-        }
+        EditorGUILayout.BeginVertical(cardStyle);
+        EditorGUILayout.BeginHorizontal();
 
-        return builder.ToString();
-    }
+        DrawStatusBadge(row);
 
-    private static int GetMissingCount()
-    {
-        var count = 0;
-        foreach (var status in LastStatuses)
+        EditorGUILayout.BeginVertical();
+        GUILayout.Label(row.Spec.DisplayName, EditorStyles.boldLabel);
+        GUILayout.Label(row.Spec.PackageName, mutedStyle);
+        EditorGUILayout.EndVertical();
+
+        GUILayout.FlexibleSpace();
+
+        DrawVersionBlock("Installed", string.IsNullOrEmpty(row.InstalledVersion) ? "-" : row.InstalledVersion);
+        DrawVersionBlock("Latest", row.LatestLabel);
+
+        GUI.enabled = addRequest == null && !isChecking && row.CanInstallFromRegistry;
+        if (row.State == InstallState.Missing)
         {
-            if (!status.IsInstalled)
+            if (GUILayout.Button("Install", toolbarButtonStyle, GUILayout.Width(78f)))
             {
-                count++;
+                QueueRows(candidate => candidate == row);
             }
         }
+        else if (row.CanUpdate)
+        {
+            if (GUILayout.Button("Update", toolbarButtonStyle, GUILayout.Width(78f)))
+            {
+                QueueRows(candidate => candidate == row);
+            }
+        }
+        else
+        {
+            GUI.enabled = false;
+            GUILayout.Button(row.IsLocal ? "Local" : "Current", toolbarButtonStyle, GUILayout.Width(78f));
+        }
 
-        return count;
+        GUI.enabled = true;
+        EditorGUILayout.EndHorizontal();
+
+        if (!string.IsNullOrEmpty(row.Message))
+        {
+            GUILayout.Space(3f);
+            GUILayout.Label(row.Message, mutedStyle);
+        }
+
+        EditorGUILayout.EndVertical();
+    }
+
+    private void DrawStatusBadge(PackageRow row)
+    {
+        var label = row.StatusLabel;
+        var color = row.StatusColor;
+        var rect = GUILayoutUtility.GetRect(96f, 24f, GUILayout.Width(96f), GUILayout.Height(24f));
+        EditorGUI.DrawRect(rect, color);
+        GUI.Label(rect, label, badgeStyle);
+    }
+
+    private void DrawVersionBlock(string label, string value)
+    {
+        EditorGUILayout.BeginVertical(GUILayout.Width(90f));
+        GUILayout.Label(label, mutedStyle);
+        GUILayout.Label(value, EditorStyles.boldLabel);
+        EditorGUILayout.EndVertical();
+    }
+
+    private void DrawFooter()
+    {
+        EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+        GUILayout.Label("Local packages and Assets folders are detected but not overwritten automatically.", mutedStyle);
+        GUILayout.FlexibleSpace();
+        if (GUILayout.Button("Open manifest", EditorStyles.miniButton, GUILayout.Width(100f)))
+        {
+            var manifestPath = ToProjectPath("Packages/manifest.json");
+            if (File.Exists(manifestPath))
+            {
+                EditorUtility.OpenWithDefaultApp(manifestPath);
+            }
+        }
+        EditorGUILayout.EndHorizontal();
+    }
+
+    private void DisposeLatestRequests()
+    {
+        foreach (var latestRequest in latestRequests)
+        {
+            latestRequest.Request.Dispose();
+        }
+
+        latestRequests.Clear();
+    }
+
+    private static string ParseLatestVersion(string json)
+    {
+        if (string.IsNullOrEmpty(json))
+        {
+            return string.Empty;
+        }
+
+        var match = Regex.Match(json, "\"latest\"\\s*:\\s*\"([^\"]+)\"");
+        return match.Success ? match.Groups[1].Value : string.Empty;
     }
 
     private static string ReadManifestJson()
@@ -311,68 +643,187 @@ internal static class VLiveKitInstaller
         return File.Exists(manifestPath) ? File.ReadAllText(manifestPath) : string.Empty;
     }
 
+    private static string ReadLocalPackageVersion(PackageSpec package)
+    {
+        var packageJsonPath = FindLocalPackageJson(package);
+        if (string.IsNullOrEmpty(packageJsonPath) || !File.Exists(packageJsonPath))
+        {
+            return null;
+        }
+
+        var json = File.ReadAllText(packageJsonPath);
+        var match = Regex.Match(json, "\"version\"\\s*:\\s*\"([^\"]+)\"");
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
+    private static string FindLocalPackageJson(PackageSpec package)
+    {
+        var assetPath = ToProjectPath(package.AssetFolderPath + "/package.json");
+        if (File.Exists(assetPath))
+        {
+            return assetPath;
+        }
+
+        var packageFolder = ToProjectPath(package.PackageFolderPath);
+        if (!Directory.Exists(packageFolder))
+        {
+            return null;
+        }
+
+        var candidates = Directory.GetFiles(packageFolder, "package.json", SearchOption.AllDirectories);
+        foreach (var candidate in candidates)
+        {
+            if (candidate.IndexOf(Path.DirectorySeparatorChar + "Library" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                continue;
+            }
+
+            return candidate;
+        }
+
+        return null;
+    }
+
     private static string ToProjectPath(string unityRelativePath)
     {
         return Path.GetFullPath(Path.Combine(Application.dataPath, "..", unityRelativePath));
     }
 
-    private static string GetStateLabel(InstallState state)
+    private static int CompareVersions(string left, string right)
     {
-        switch (state)
+        if (string.IsNullOrEmpty(left) || string.IsNullOrEmpty(right))
         {
-            case InstallState.PackageManager:
-                return "Package Manager";
-            case InstallState.Manifest:
-                return "Packages/manifest.json";
-            case InstallState.PackageFolderOrSubmodule:
-                return "Packages folder or submodule";
-            case InstallState.AssetsFolder:
-                return "Assets folder";
-            default:
-                return "Not found";
+            return 0;
         }
+
+        if (Version.TryParse(StripPrerelease(left), out var leftVersion) && Version.TryParse(StripPrerelease(right), out var rightVersion))
+        {
+            return leftVersion.CompareTo(rightVersion);
+        }
+
+        return string.CompareOrdinal(left, right);
     }
 
-    private static void CleanupInstallQueue()
+    private static string StripPrerelease(string version)
     {
-        currentRequest = null;
-        currentPackage = default;
-        totalCount = 0;
-        installedCount = 0;
-        PendingPackages.Clear();
-        EditorUtility.ClearProgressBar();
-        EditorApplication.update -= UpdateInstallQueue;
+        var dashIndex = version.IndexOf('-');
+        return dashIndex >= 0 ? version.Substring(0, dashIndex) : version;
     }
 
     private readonly struct PackageSpec
     {
-        public PackageSpec(string packageName, string displayName, string packageUrl, string packageFolderPath, string assetFolderPath)
+        public PackageSpec(string packageName, string displayName, string packageFolderPath, string assetFolderPath)
         {
             PackageName = packageName;
             DisplayName = displayName;
-            PackageUrl = packageUrl;
             PackageFolderPath = packageFolderPath;
             AssetFolderPath = assetFolderPath;
         }
 
         public string PackageName { get; }
         public string DisplayName { get; }
-        public string PackageUrl { get; }
         public string PackageFolderPath { get; }
         public string AssetFolderPath { get; }
     }
 
-    private readonly struct PackageStatus
+    private sealed class PackageRow
     {
-        public PackageStatus(PackageSpec package, InstallState state)
+        public PackageRow(PackageSpec spec)
         {
-            Package = package;
-            State = state;
+            Spec = spec;
+            ResetRuntimeState();
         }
 
-        public PackageSpec Package { get; }
-        public InstallState State { get; }
-        public bool IsInstalled => State != InstallState.Missing;
+        public PackageSpec Spec { get; }
+        public InstallState State { get; set; }
+        public LatestState LatestCheckState { get; set; }
+        public string InstalledVersion { get; set; }
+        public string LatestVersion { get; set; }
+        public string Message { get; set; }
+
+        public bool IsLocal => State == InstallState.LocalPackage || State == InstallState.AssetsFolder;
+        public bool CanInstallFromRegistry => !IsLocal && LatestCheckState != LatestState.Checking;
+        public bool CanUpdate => State != InstallState.Missing && !IsLocal && !string.IsNullOrEmpty(InstalledVersion) && !string.IsNullOrEmpty(LatestVersion) && CompareVersions(InstalledVersion, LatestVersion) < 0;
+
+        public string LatestLabel
+        {
+            get
+            {
+                if (LatestCheckState == LatestState.Checking)
+                {
+                    return "...";
+                }
+
+                return string.IsNullOrEmpty(LatestVersion) ? "-" : LatestVersion;
+            }
+        }
+
+        public string StatusLabel
+        {
+            get
+            {
+                if (State == InstallState.Missing)
+                {
+                    return "Missing";
+                }
+
+                if (CanUpdate)
+                {
+                    return "Update";
+                }
+
+                if (IsLocal)
+                {
+                    return "Local";
+                }
+
+                return "Current";
+            }
+        }
+
+        public Color StatusColor
+        {
+            get
+            {
+                if (State == InstallState.Missing)
+                {
+                    return new Color(0.72f, 0.18f, 0.16f);
+                }
+
+                if (CanUpdate)
+                {
+                    return new Color(0.88f, 0.45f, 0.12f);
+                }
+
+                if (IsLocal)
+                {
+                    return new Color(0.22f, 0.42f, 0.72f);
+                }
+
+                return new Color(0.18f, 0.58f, 0.32f);
+            }
+        }
+
+        public void ResetRuntimeState()
+        {
+            State = InstallState.Missing;
+            LatestCheckState = LatestState.Idle;
+            InstalledVersion = "";
+            LatestVersion = "";
+            Message = "";
+        }
+    }
+
+    private sealed class LatestVersionRequest
+    {
+        public LatestVersionRequest(PackageRow row, UnityWebRequest request)
+        {
+            Row = row;
+            Request = request;
+        }
+
+        public PackageRow Row { get; }
+        public UnityWebRequest Request { get; }
     }
 
     private enum InstallState
@@ -380,15 +831,16 @@ internal static class VLiveKitInstaller
         Missing,
         PackageManager,
         Manifest,
-        PackageFolderOrSubmodule,
+        LocalPackage,
         AssetsFolder
     }
 
-    private enum StatusCheckMode
+    private enum LatestState
     {
-        ShowPrompt,
-        ShowStatusOnly,
-        InstallMissing
+        Idle,
+        Checking,
+        Done,
+        Failed
     }
 }
 #endif

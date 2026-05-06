@@ -8,22 +8,15 @@ This package does not depend on the individual VLiveKit packages. It only adds a
 
 After the package is imported, open:
 
-`toshi > VLiveKit > Check Install Status`
+`toshi > VLiveKit > Package Manager`
 
-or:
+The window can:
 
-`toshi > VLiveKit > Install Missing Packages`
-
-## What It Checks
-
-The installer checks:
-
-- Unity Package Manager
-- `Packages/manifest.json`
-- local `Packages` folders or submodules
-- matching `Assets/toshi.VLiveKit` folders
-
-It only adds packages that are not already present.
+- check installed package versions
+- check the latest versions from the npm registry
+- install missing packages
+- update installed registry packages
+- detect local `Packages` folders, submodules, and `Assets/toshi.VLiveKit` folders without replacing them automatically
 
 ## Package
 
@@ -47,7 +40,7 @@ Configure the scoped registry in `Packages/manifest.json`.
     }
   ],
   "dependencies": {
-    "com.toshi.vlivekit": "0.1.3"
+    "com.toshi.vlivekit": "0.1.5"
   }
 }
 ```
