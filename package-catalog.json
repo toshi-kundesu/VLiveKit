@@ -1,0 +1,64 @@
+{
+  "packages": [
+    {
+      "name": "com.toshi.vlivekit.artnetlink",
+      "displayName": "VLiveKit ArtNetLink",
+      "packageFolderPath": "Packages/VLiveKit_ArtNetLink",
+      "assetFolderPath": "Assets/toshi.VLiveKit/ArtNetLink"
+    },
+    {
+      "name": "com.toshi.vlivekit.cameraunit",
+      "displayName": "VLive Camera Unit",
+      "packageFolderPath": "Packages/VLiveKit_camera",
+      "assetFolderPath": "Assets/toshi.VLiveKit/VLiveCameraUnit"
+    },
+    {
+      "name": "com.toshi.vlivekit.ledvision",
+      "displayName": "VLiveKit LED Vision",
+      "packageFolderPath": "Packages/VLiveKit_LEDVision",
+      "assetFolderPath": "Assets/toshi.VLiveKit/LEDVision"
+    },
+    {
+      "name": "com.toshi.vlivekit.lensfilters",
+      "displayName": "VLive Lens Filters",
+      "packageFolderPath": "Packages/VLiveKit_LiveLensFilters",
+      "assetFolderPath": "Assets/toshi.VLiveKit/LiveLensFilters"
+    },
+    {
+      "name": "com.toshi.vlivekit.livetoon",
+      "displayName": "VLive Live Toon",
+      "packageFolderPath": "Packages/VLiveKit_LiveToon",
+      "assetFolderPath": "Assets/toshi.VLiveKit/livetoon"
+    },
+    {
+      "name": "com.toshi.vlivekit.performeract",
+      "displayName": "VLive Performer Act",
+      "packageFolderPath": "Packages/VLiveKit_PerformerAct",
+      "assetFolderPath": "Assets/toshi.VLiveKit/PerformerAct"
+    },
+    {
+      "name": "com.toshi.vlivekit.testassetscontainer",
+      "displayName": "VLiveKit Test Assets Container",
+      "packageFolderPath": "Packages/VLiveKit_TestAssetsContainer",
+      "assetFolderPath": "Assets/toshi.VLiveKit/TestAssetsContainer"
+    },
+    {
+      "name": "com.toshi.vlivekit.stagebuilder",
+      "displayName": "VLiveKit StageBuilder",
+      "packageFolderPath": "Packages/VLiveKit_StageBuilder",
+      "assetFolderPath": "Assets/toshi.VLiveKit/StageBuilder"
+    },
+    {
+      "name": "com.toshi.vlivekit.stageeffect",
+      "displayName": "VLiveKit StageEffect",
+      "packageFolderPath": "Packages/VLiveKit_StageEffect",
+      "assetFolderPath": "Assets/toshi.VLiveKit/StageEffect"
+    },
+    {
+      "name": "com.toshi.vlivekit.videorack",
+      "displayName": "VLiveKit VideoRack",
+      "packageFolderPath": "Packages/VLiveKit_VideoRack",
+      "assetFolderPath": "Assets/toshi.VLiveKit/VideoRack"
+    }
+  ]
+}

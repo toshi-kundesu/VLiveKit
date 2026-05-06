@@ -12,6 +12,7 @@ After the package is imported, open:
 
 The window can:
 
+- refresh the package catalog from the latest published `com.toshi.vlivekit` package
 - check installed package versions
 - check the latest versions from the npm registry
 - install missing packages

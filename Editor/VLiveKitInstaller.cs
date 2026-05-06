@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.PackageManager;
@@ -14,21 +15,9 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 {
     private const string MenuRoot = "toshi/VLiveKit/";
     private const string RegistryUrl = "https://registry.npmjs.org/";
+    private const string CatalogPackageName = "com.toshi.vlivekit";
+    private const string CatalogFileName = "package-catalog.json";
     private const string PromptPrefsKeyPrefix = "VLiveKitInstaller.PromptShown.";
-
-    private static readonly PackageSpec[] Packages =
-    {
-        new PackageSpec("com.toshi.vlivekit.artnetlink", "VLiveKit ArtNetLink", "Packages/VLiveKit_ArtNetLink", "Assets/toshi.VLiveKit/ArtNetLink"),
-        new PackageSpec("com.toshi.vlivekit.cameraunit", "VLive Camera Unit", "Packages/VLiveKit_camera", "Assets/toshi.VLiveKit/VLiveCameraUnit"),
-        new PackageSpec("com.toshi.vlivekit.ledvision", "VLiveKit LED Vision", "Packages/VLiveKit_LEDVision", "Assets/toshi.VLiveKit/LEDVision"),
-        new PackageSpec("com.toshi.vlivekit.lensfilters", "VLive Lens Filters", "Packages/VLiveKit_LiveLensFilters", "Assets/toshi.VLiveKit/LiveLensFilters"),
-        new PackageSpec("com.toshi.vlivekit.livetoon", "VLive Live Toon", "Packages/VLiveKit_LiveToon", "Assets/toshi.VLiveKit/livetoon"),
-        new PackageSpec("com.toshi.vlivekit.performeract", "VLive Performer Act", "Packages/VLiveKit_PerformerAct", "Assets/toshi.VLiveKit/PerformerAct"),
-        new PackageSpec("com.toshi.vlivekit.testassetscontainer", "VLiveKit Test Assets Container", "Packages/VLiveKit_TestAssetsContainer", "Assets/toshi.VLiveKit/TestAssetsContainer"),
-        new PackageSpec("com.toshi.vlivekit.stagebuilder", "VLiveKit StageBuilder", "Packages/VLiveKit_StageBuilder", "Assets/toshi.VLiveKit/StageBuilder"),
-        new PackageSpec("com.toshi.vlivekit.stageeffect", "VLiveKit StageEffect", "Packages/VLiveKit_StageEffect", "Assets/toshi.VLiveKit/StageEffect"),
-        new PackageSpec("com.toshi.vlivekit.videorack", "VLiveKit VideoRack", "Packages/VLiveKit_VideoRack", "Assets/toshi.VLiveKit/VideoRack"),
-    };
 
     private static bool promptedThisSession;
 
@@ -37,6 +26,8 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private readonly List<LatestVersionRequest> latestRequests = new List<LatestVersionRequest>();
 
     private Vector2 scrollPosition;
+    private UnityWebRequest catalogMetadataRequest;
+    private UnityWebRequest catalogRequest;
     private ListRequest listRequest;
     private AddRequest addRequest;
     private PackageRow activeOperation;
@@ -51,6 +42,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private GUIStyle toolbarButtonStyle;
     private bool stylesReady;
     private string statusText = "Ready";
+    private string catalogSource = "Bundled catalog";
     private bool isChecking;
 
     static VLiveKitInstallerWindow()
@@ -129,6 +121,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     {
         EditorApplication.update -= UpdateRequests;
         DisposeLatestRequests();
+        DisposeCatalogRequests();
         EditorUtility.ClearProgressBar();
     }
 
@@ -167,8 +160,19 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             return;
         }
 
-        EnsureRows();
         isChecking = true;
+        statusText = "Refreshing package catalog...";
+        rows.Clear();
+        DisposeCatalogRequests();
+        catalogMetadataRequest = UnityWebRequest.Get(RegistryUrl + CatalogPackageName);
+        catalogMetadataRequest.timeout = 20;
+        catalogMetadataRequest.SendWebRequest();
+        Repaint();
+    }
+
+    private void StartStatusRefresh()
+    {
+        EnsureRows();
         statusText = "Checking installed packages...";
         foreach (var row in rows)
         {
@@ -181,9 +185,61 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private void UpdateRequests()
     {
+        UpdateCatalogRequests();
         UpdateListRequest();
         UpdateLatestRequests();
         UpdateAddRequest();
+    }
+
+    private void UpdateCatalogRequests()
+    {
+        if (catalogMetadataRequest != null && catalogMetadataRequest.isDone)
+        {
+            if (catalogMetadataRequest.result == UnityWebRequest.Result.Success)
+            {
+                var tarballUrl = ParseLatestTarballUrl(catalogMetadataRequest.downloadHandler.text);
+                if (!string.IsNullOrEmpty(tarballUrl))
+                {
+                    catalogRequest = UnityWebRequest.Get(tarballUrl);
+                    catalogRequest.timeout = 20;
+                    catalogRequest.SendWebRequest();
+                    statusText = "Downloading latest package catalog...";
+                }
+                else
+                {
+                    LoadBundledCatalog("Latest catalog URL was not found.");
+                    StartStatusRefresh();
+                }
+            }
+            else
+            {
+                LoadBundledCatalog(catalogMetadataRequest.error);
+                StartStatusRefresh();
+            }
+
+            catalogMetadataRequest.Dispose();
+            catalogMetadataRequest = null;
+            Repaint();
+        }
+
+        if (catalogRequest != null && catalogRequest.isDone)
+        {
+            if (catalogRequest.result == UnityWebRequest.Result.Success && TryLoadCatalogFromTarball(catalogRequest.downloadHandler.data, out var loadedRows))
+            {
+                rows.Clear();
+                rows.AddRange(loadedRows);
+                catalogSource = "Latest catalog";
+            }
+            else
+            {
+                LoadBundledCatalog(catalogRequest.error);
+            }
+
+            catalogRequest.Dispose();
+            catalogRequest = null;
+            StartStatusRefresh();
+            Repaint();
+        }
     }
 
     private void UpdateListRequest()
@@ -425,10 +481,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             return;
         }
 
-        foreach (var package in Packages)
-        {
-            rows.Add(new PackageRow(package));
-        }
+        LoadBundledCatalog("");
     }
 
     private void EnsureStyles()
@@ -499,7 +552,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
         GUI.enabled = true;
         GUILayout.FlexibleSpace();
-        GUILayout.Label(statusText, mutedStyle);
+        GUILayout.Label(catalogSource + " - " + statusText, mutedStyle);
         EditorGUILayout.EndHorizontal();
 
         if (IsOperating)
@@ -698,6 +751,21 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         latestRequests.Clear();
     }
 
+    private void DisposeCatalogRequests()
+    {
+        if (catalogMetadataRequest != null)
+        {
+            catalogMetadataRequest.Dispose();
+            catalogMetadataRequest = null;
+        }
+
+        if (catalogRequest != null)
+        {
+            catalogRequest.Dispose();
+            catalogRequest = null;
+        }
+    }
+
     private static string ParseLatestVersion(string json)
     {
         if (string.IsNullOrEmpty(json))
@@ -707,6 +775,181 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
         var match = Regex.Match(json, "\"latest\"\\s*:\\s*\"([^\"]+)\"");
         return match.Success ? match.Groups[1].Value : string.Empty;
+    }
+
+    private static string ParseLatestTarballUrl(string json)
+    {
+        var latestVersion = ParseLatestVersion(json);
+        if (string.IsNullOrEmpty(latestVersion))
+        {
+            return string.Empty;
+        }
+
+        var escapedVersion = Regex.Escape(latestVersion);
+        var versionBlock = Regex.Match(json, "\"" + escapedVersion + "\"\\s*:\\s*\\{.*?\"dist\"\\s*:\\s*\\{.*?\"tarball\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.Singleline);
+        return versionBlock.Success ? versionBlock.Groups[1].Value.Replace("\\/", "/") : string.Empty;
+    }
+
+    private void LoadBundledCatalog(string reason)
+    {
+        rows.Clear();
+        var catalogPath = FindBundledCatalogPath();
+        if (!string.IsNullOrEmpty(catalogPath) && File.Exists(catalogPath) && TryLoadCatalogJson(File.ReadAllText(catalogPath), out var loadedRows))
+        {
+            rows.AddRange(loadedRows);
+            catalogSource = "Bundled catalog";
+            statusText = string.IsNullOrEmpty(reason) ? "Using bundled catalog." : "Using bundled catalog: " + reason;
+            return;
+        }
+
+        LoadFallbackCatalog();
+        catalogSource = "Fallback catalog";
+        statusText = "Using fallback catalog.";
+    }
+
+    private static string FindBundledCatalogPath()
+    {
+        var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(VLiveKitInstallerWindow).Assembly);
+        if (packageInfo != null && !string.IsNullOrEmpty(packageInfo.resolvedPath))
+        {
+            var packageCatalog = Path.Combine(packageInfo.resolvedPath, CatalogFileName);
+            if (File.Exists(packageCatalog))
+            {
+                return packageCatalog;
+            }
+        }
+
+        var projectCatalog = ToProjectPath("Packages/VLiveKit/" + CatalogFileName);
+        return File.Exists(projectCatalog) ? projectCatalog : null;
+    }
+
+    private static bool TryLoadCatalogFromTarball(byte[] data, out List<PackageRow> loadedRows)
+    {
+        loadedRows = null;
+        if (data == null || data.Length == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            var json = ReadFileFromTgz(data, "package/" + CatalogFileName);
+            return !string.IsNullOrEmpty(json) && TryLoadCatalogJson(json, out loadedRows);
+        }
+        catch
+        {
+            return false;
+        }
+
+        return false;
+    }
+
+    private static string ReadFileFromTgz(byte[] data, string path)
+    {
+        using (var compressedStream = new MemoryStream(data))
+        using (var gzipStream = new GZipStream(compressedStream, CompressionMode.Decompress))
+        using (var tarStream = new MemoryStream())
+        {
+            gzipStream.CopyTo(tarStream);
+            tarStream.Position = 0;
+
+            while (tarStream.Position + 512 <= tarStream.Length)
+            {
+                var header = new byte[512];
+                var read = tarStream.Read(header, 0, header.Length);
+                if (read < header.Length || IsEmptyTarBlock(header))
+                {
+                    break;
+                }
+
+                var name = ReadTarString(header, 0, 100);
+                var prefix = ReadTarString(header, 345, 155);
+                if (!string.IsNullOrEmpty(prefix))
+                {
+                    name = prefix + "/" + name;
+                }
+
+                var sizeText = ReadTarString(header, 124, 12).Trim();
+                var size = string.IsNullOrEmpty(sizeText) ? 0L : Convert.ToInt64(sizeText, 8);
+                var dataPosition = tarStream.Position;
+
+                if (name == path)
+                {
+                    var fileData = new byte[size];
+                    tarStream.Read(fileData, 0, fileData.Length);
+                    return Encoding.UTF8.GetString(fileData);
+                }
+
+                tarStream.Position = dataPosition + RoundUpToTarBlock(size);
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsEmptyTarBlock(byte[] block)
+    {
+        for (var i = 0; i < block.Length; i++)
+        {
+            if (block[i] != 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static string ReadTarString(byte[] data, int offset, int count)
+    {
+        var length = 0;
+        while (length < count && data[offset + length] != 0)
+        {
+            length++;
+        }
+
+        return Encoding.UTF8.GetString(data, offset, length);
+    }
+
+    private static long RoundUpToTarBlock(long size)
+    {
+        return ((size + 511L) / 512L) * 512L;
+    }
+
+    private static bool TryLoadCatalogJson(string json, out List<PackageRow> loadedRows)
+    {
+        loadedRows = new List<PackageRow>();
+        if (string.IsNullOrEmpty(json))
+        {
+            return false;
+        }
+
+        var itemMatches = Regex.Matches(json, "\\{\\s*\"name\"\\s*:\\s*\"([^\"]+)\"\\s*,\\s*\"displayName\"\\s*:\\s*\"([^\"]+)\"\\s*,\\s*\"packageFolderPath\"\\s*:\\s*\"([^\"]+)\"\\s*,\\s*\"assetFolderPath\"\\s*:\\s*\"([^\"]+)\"\\s*\\}", RegexOptions.Singleline);
+        foreach (Match match in itemMatches)
+        {
+            loadedRows.Add(new PackageRow(new PackageSpec(
+                match.Groups[1].Value,
+                match.Groups[2].Value,
+                match.Groups[3].Value,
+                match.Groups[4].Value)));
+        }
+
+        return loadedRows.Count > 0;
+    }
+
+    private void LoadFallbackCatalog()
+    {
+        rows.Clear();
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.artnetlink", "VLiveKit ArtNetLink", "Packages/VLiveKit_ArtNetLink", "Assets/toshi.VLiveKit/ArtNetLink")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.cameraunit", "VLive Camera Unit", "Packages/VLiveKit_camera", "Assets/toshi.VLiveKit/VLiveCameraUnit")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.ledvision", "VLiveKit LED Vision", "Packages/VLiveKit_LEDVision", "Assets/toshi.VLiveKit/LEDVision")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.lensfilters", "VLive Lens Filters", "Packages/VLiveKit_LiveLensFilters", "Assets/toshi.VLiveKit/LiveLensFilters")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.livetoon", "VLive Live Toon", "Packages/VLiveKit_LiveToon", "Assets/toshi.VLiveKit/livetoon")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.performeract", "VLive Performer Act", "Packages/VLiveKit_PerformerAct", "Assets/toshi.VLiveKit/PerformerAct")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.testassetscontainer", "VLiveKit Test Assets Container", "Packages/VLiveKit_TestAssetsContainer", "Assets/toshi.VLiveKit/TestAssetsContainer")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.stagebuilder", "VLiveKit StageBuilder", "Packages/VLiveKit_StageBuilder", "Assets/toshi.VLiveKit/StageBuilder")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.stageeffect", "VLiveKit StageEffect", "Packages/VLiveKit_StageEffect", "Assets/toshi.VLiveKit/StageEffect")));
+        rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.videorack", "VLiveKit VideoRack", "Packages/VLiveKit_VideoRack", "Assets/toshi.VLiveKit/VideoRack")));
     }
 
     private static string ReadManifestJson()
