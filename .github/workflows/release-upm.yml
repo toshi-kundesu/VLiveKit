@@ -1,0 +1,101 @@
+﻿name: Release UPM Package
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, for example v0.0.1"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  PACKAGE_WORKDIR: /tmp/upm-package
+
+jobs:
+  release:
+    name: Publish scoped registry package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js for npm registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag must look like v0.0.1 or v0.0.1-preview.1: $tag"
+            exit 1
+          fi
+
+          version="${tag#v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare package contents
+        shell: bash
+        run: |
+          test -f package.json
+
+          rm -rf "$PACKAGE_WORKDIR"
+          mkdir -p "$PACKAGE_WORKDIR"
+          cp package.json README.md LICENSE .npmignore "$PACKAGE_WORKDIR"/
+
+          node -e '
+            const fs = require("fs");
+            const path = process.env.PACKAGE_WORKDIR + "/package.json";
+            const packageJson = JSON.parse(fs.readFileSync(path, "utf8").replace(/^\uFEFF/, ""));
+            packageJson.version = process.env.RELEASE_VERSION;
+            fs.writeFileSync(path, JSON.stringify(packageJson, null, 2) + "\n");
+          '
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+
+      - name: Pack UPM tarball
+        id: pack
+        shell: bash
+        working-directory: ${{ env.PACKAGE_WORKDIR }}
+        run: |
+          npm pack --json > /tmp/npm-pack.json
+          tarball="$(node -e 'const fs = require("fs"); const pack = JSON.parse(fs.readFileSync("/tmp/npm-pack.json", "utf8")); console.log(pack[0].filename);')"
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+          echo "tarball_path=$PACKAGE_WORKDIR/$tarball" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to npm registry
+        shell: bash
+        run: |
+          if [[ -z "$NODE_AUTH_TOKEN" ]]; then
+            echo "::error::Missing NPM_TOKEN repository secret. Create an npm automation token and save it as NPM_TOKEN."
+            exit 1
+          fi
+
+          npm publish "${{ steps.pack.outputs.tarball_path }}" --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          files: ${{ steps.pack.outputs.tarball_path }}
