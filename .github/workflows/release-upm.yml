@@ -59,6 +59,7 @@ jobs:
           rm -rf "$PACKAGE_WORKDIR"
           mkdir -p "$PACKAGE_WORKDIR"
           cp package.json README.md LICENSE .npmignore "$PACKAGE_WORKDIR"/
+          cp package.json.meta README.md.meta LICENSE.meta "$PACKAGE_WORKDIR"/
           if [[ -d Editor ]]; then
             cp -a Editor "$PACKAGE_WORKDIR"/
           fi
