@@ -40,6 +40,10 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private ListRequest listRequest;
     private AddRequest addRequest;
     private PackageRow activeOperation;
+    private string activePackageId;
+    private string activeDisplayName;
+    private int operationTotalCount;
+    private int operationCompletedCount;
     private GUIStyle headerStyle;
     private GUIStyle cardStyle;
     private GUIStyle badgeStyle;
@@ -125,6 +129,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     {
         EditorApplication.update -= UpdateRequests;
         DisposeLatestRequests();
+        EditorUtility.ClearProgressBar();
     }
 
     private void OnGUI()
@@ -257,23 +262,37 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             return;
         }
 
+        var completedRow = activeOperation ?? FindRowByPackageId(activePackageId);
+        var displayName = !string.IsNullOrEmpty(activeDisplayName) ? activeDisplayName : activePackageId;
+        operationCompletedCount++;
+
         if (addRequest.Status == StatusCode.Success)
         {
-            activeOperation.State = InstallState.PackageManager;
-            activeOperation.InstalledVersion = addRequest.Result.version;
-            activeOperation.Message = "Installed " + addRequest.Result.version;
-            statusText = "Installed " + activeOperation.Spec.DisplayName;
+            if (completedRow != null)
+            {
+                completedRow.State = InstallState.PackageManager;
+                completedRow.InstalledVersion = addRequest.Result.version;
+                completedRow.Message = "Installed " + addRequest.Result.version;
+            }
+
+            statusText = "Installed " + displayName;
         }
         else
         {
             var errorMessage = addRequest.Error != null ? addRequest.Error.message : "Unknown Package Manager error.";
-            activeOperation.Message = errorMessage;
-            statusText = "Failed: " + activeOperation.Spec.DisplayName;
-            Debug.LogError("Failed to install/update " + activeOperation.Spec.DisplayName + ": " + errorMessage);
+            if (completedRow != null)
+            {
+                completedRow.Message = errorMessage;
+            }
+
+            statusText = "Failed: " + displayName;
+            Debug.LogError("Failed to install/update " + displayName + ": " + errorMessage);
         }
 
         addRequest = null;
         activeOperation = null;
+        activePackageId = null;
+        activeDisplayName = null;
         StartNextOperation();
         Repaint();
     }
@@ -367,6 +386,8 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             return;
         }
 
+        operationTotalCount = pendingOperations.Count;
+        operationCompletedCount = 0;
         StartNextOperation();
     }
 
@@ -379,6 +400,9 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
         if (pendingOperations.Count == 0)
         {
+            EditorUtility.ClearProgressBar();
+            operationTotalCount = 0;
+            operationCompletedCount = 0;
             Refresh();
             return;
         }
@@ -386,8 +410,11 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         activeOperation = pendingOperations.Dequeue();
         var version = string.IsNullOrEmpty(activeOperation.LatestVersion) ? "latest" : activeOperation.LatestVersion;
         var packageId = activeOperation.Spec.PackageName + "@" + version;
+        activePackageId = activeOperation.Spec.PackageName;
+        activeDisplayName = activeOperation.Spec.DisplayName;
         activeOperation.Message = "Adding " + packageId;
-        statusText = activeOperation.Message;
+        statusText = GetOperationProgressLabel(activeOperation.Spec.DisplayName);
+        EditorUtility.DisplayProgressBar("VLiveKit Package Manager", statusText, GetOperationProgress());
         addRequest = Client.Add(packageId);
     }
 
@@ -474,6 +501,14 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         GUILayout.FlexibleSpace();
         GUILayout.Label(statusText, mutedStyle);
         EditorGUILayout.EndHorizontal();
+
+        if (IsOperating)
+        {
+            var rect = GUILayoutUtility.GetRect(1f, 4f, GUILayout.ExpandWidth(true));
+            EditorGUI.DrawRect(rect, new Color(0.18f, 0.18f, 0.18f));
+            var fillRect = new Rect(rect.x, rect.y, rect.width * GetOperationProgress(), rect.height);
+            EditorGUI.DrawRect(fillRect, new Color(0.24f, 0.62f, 0.92f));
+        }
     }
 
     private void DrawSummary()
@@ -614,6 +649,43 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             }
         }
         EditorGUILayout.EndHorizontal();
+    }
+
+    private bool IsOperating => addRequest != null || pendingOperations.Count > 0;
+
+    private float GetOperationProgress()
+    {
+        if (operationTotalCount <= 0)
+        {
+            return 0f;
+        }
+
+        return Mathf.Clamp01((operationCompletedCount + (addRequest != null ? 0.35f : 0f)) / operationTotalCount);
+    }
+
+    private string GetOperationProgressLabel(string displayName)
+    {
+        var total = Mathf.Max(operationTotalCount, 1);
+        var current = Mathf.Min(operationCompletedCount + 1, total);
+        return "Updating " + displayName + " (" + current + "/" + total + ")";
+    }
+
+    private PackageRow FindRowByPackageId(string packageId)
+    {
+        if (string.IsNullOrEmpty(packageId))
+        {
+            return null;
+        }
+
+        foreach (var row in rows)
+        {
+            if (row.Spec.PackageName == packageId)
+            {
+                return row;
+            }
+        }
+
+        return null;
     }
 
     private void DisposeLatestRequests()

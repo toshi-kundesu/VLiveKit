@@ -16,6 +16,7 @@ The window can:
 - check the latest versions from the npm registry
 - install missing packages
 - update installed registry packages
+- show update progress while batch operations are running
 - detect local `Packages` folders, submodules, and `Assets/toshi.VLiveKit` folders without replacing them automatically
 
 ## Package
@@ -40,7 +41,7 @@ Configure the scoped registry in `Packages/manifest.json`.
     }
   ],
   "dependencies": {
-    "com.toshi.vlivekit": "0.1.5"
+    "com.toshi.vlivekit": "0.1.6"
   }
 }
 ```
