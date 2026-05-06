@@ -1,0 +1,21 @@
+{
+  "name": "com.toshi.vlivekit",
+  "displayName": "VLiveKit",
+  "version": "0.0.1",
+  "unity": "2022.3",
+  "description": "Installer package for VLiveKit packages used in virtual live production.",
+  "author": {
+    "name": "toshi"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/toshi-kundesu/VLiveKit.git"
+  },
+  "license": "Unlicense",
+  "keywords": [
+    "Unity",
+    "VLiveKit",
+    "Virtual Live",
+    "Installer"
+  ]
+}
