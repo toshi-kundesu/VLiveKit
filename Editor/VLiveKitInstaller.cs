@@ -41,6 +41,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private GUIStyle badgeStyle;
     private GUIStyle mutedStyle;
     private GUIStyle toolbarButtonStyle;
+    private GUIStyle primaryButtonStyle;
     private GUIStyle titleBadgeStyle;
     private bool stylesReady;
     private string statusText = "Ready";
@@ -519,6 +520,12 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         {
             fixedHeight = 26
         };
+        primaryButtonStyle = new GUIStyle(EditorStyles.miniButton)
+        {
+            alignment = TextAnchor.MiddleCenter,
+            fontStyle = FontStyle.Bold,
+            fixedHeight = 30
+        };
         titleBadgeStyle = new GUIStyle(EditorStyles.boldLabel)
         {
             alignment = TextAnchor.MiddleCenter,
@@ -531,7 +538,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private void DrawHeader()
     {
-        var rect = GUILayoutUtility.GetRect(0f, 96f, GUILayout.ExpandWidth(true));
+        var rect = GUILayoutUtility.GetRect(0f, 106f, GUILayout.ExpandWidth(true));
         EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.04f, 0.06f, 0.07f) : new Color(0.90f, 0.97f, 0.98f));
         EditorGUI.DrawRect(new Rect(rect.x, rect.y, rect.width, 2f), AccentColor(1f));
         EditorGUI.DrawRect(new Rect(rect.x, rect.y + rect.height - 2f, rect.width, 2f), AccentColor(0.75f));
@@ -545,6 +552,18 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         var badgeRect = new Rect(rect.x + 18f, rect.y + 74f, 112f, 20f);
         EditorGUI.DrawRect(badgeRect, AccentColor(0.34f));
         GUI.Label(badgeRect, "LIVE TOOLKIT", titleBadgeStyle);
+
+        var refreshRect = new Rect(rect.xMax - 142f, rect.y + 18f, 124f, 30f);
+        GUI.enabled = !isChecking && addRequest == null;
+        if (GUI.Button(refreshRect, "Refresh", primaryButtonStyle))
+        {
+            Refresh();
+        }
+
+        GUI.enabled = true;
+
+        var statusRect = new Rect(rect.xMax - 342f, rect.y + 55f, 324f, 20f);
+        GUI.Label(statusRect, catalogSource + " - " + statusText, new GUIStyle(mutedStyle) { alignment = TextAnchor.MiddleRight });
     }
 
     private static Color AccentColor(float alpha)
@@ -561,11 +580,6 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     {
         EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
         GUI.enabled = !isChecking && addRequest == null;
-        if (GUILayout.Button("Refresh", EditorStyles.toolbarButton, GUILayout.Width(80f)))
-        {
-            Refresh();
-        }
-
         if (GUILayout.Button("Install Missing", EditorStyles.toolbarButton, GUILayout.Width(110f)))
         {
             QueueRows(row => row.State == InstallState.Missing);
@@ -583,7 +597,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
         GUI.enabled = true;
         GUILayout.FlexibleSpace();
-        GUILayout.Label(catalogSource + " - " + statusText, mutedStyle);
+        GUILayout.Label("Use Refresh in the header to recheck packages.", mutedStyle);
         EditorGUILayout.EndHorizontal();
 
         if (IsOperating)
