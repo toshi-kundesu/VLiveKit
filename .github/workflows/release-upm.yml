@@ -59,6 +59,12 @@ jobs:
           rm -rf "$PACKAGE_WORKDIR"
           mkdir -p "$PACKAGE_WORKDIR"
           cp package.json README.md LICENSE .npmignore "$PACKAGE_WORKDIR"/
+          if [[ -d Editor ]]; then
+            cp -a Editor "$PACKAGE_WORKDIR"/
+          fi
+          if [[ -f Editor.meta ]]; then
+            cp Editor.meta "$PACKAGE_WORKDIR"/
+          fi
 
           node -e '
             const fs = require("fs");

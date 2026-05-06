@@ -6,6 +6,20 @@ Install this package when you want the virtual live production toolchain as one 
 
 The related VLiveKit packages are resolved from the configured scoped registry.
 
+## Installer
+
+This repository also includes a small Unity Editor installer.
+
+After the package is imported, open:
+
+`toshi > VLiveKit > Check Install Status`
+
+or:
+
+`toshi > VLiveKit > Install Missing Packages`
+
+The installer checks Unity Package Manager, `Packages/manifest.json`, local `Packages` folders or submodules, and matching `Assets/toshi.VLiveKit` folders. It only adds packages that are not already present.
+
 ## Package
 
 - Package name: `com.toshi.vlivekit`
