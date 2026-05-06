@@ -230,6 +230,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             {
                 rows.Clear();
                 rows.AddRange(loadedRows);
+                EnsureInstallerRow();
                 catalogSource = "Latest catalog";
             }
             else
@@ -544,9 +545,6 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         var badgeRect = new Rect(rect.x + 18f, rect.y + 74f, 112f, 20f);
         EditorGUI.DrawRect(badgeRect, AccentColor(0.34f));
         GUI.Label(badgeRect, "LIVE TOOLKIT", titleBadgeStyle);
-
-        var pulseRect = new Rect(badgeRect.xMax + 8f, badgeRect.y + 6f, rect.width - badgeRect.xMax - 32f, 6f);
-        DrawSignalLine(pulseRect);
     }
 
     private static Color AccentColor(float alpha)
@@ -557,18 +555,6 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private static void DrawAccentBar(Rect rect, float alpha)
     {
         EditorGUI.DrawRect(rect, AccentColor(alpha));
-    }
-
-    private static void DrawSignalLine(Rect rect)
-    {
-        EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.10f, 0.12f, 0.13f) : new Color(0.78f, 0.91f, 0.93f));
-        var segments = Mathf.Max(1, Mathf.FloorToInt(rect.width / 48f));
-        for (var i = 0; i < segments; i++)
-        {
-            var x = rect.x + i * 48f;
-            var width = i % 2 == 0 ? 28f : 12f;
-            EditorGUI.DrawRect(new Rect(x, rect.y, Mathf.Min(width, rect.xMax - x), rect.height), AccentColor(i % 2 == 0 ? 0.90f : 0.45f));
-        }
     }
 
     private void DrawToolbar()
@@ -873,6 +859,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         if (!string.IsNullOrEmpty(catalogPath) && File.Exists(catalogPath) && TryLoadCatalogJson(File.ReadAllText(catalogPath), out var loadedRows))
         {
             rows.AddRange(loadedRows);
+            EnsureInstallerRow();
             catalogSource = "Bundled catalog";
             statusText = string.IsNullOrEmpty(reason) ? "Using bundled catalog." : "Using bundled catalog: " + reason;
             return;
@@ -1041,6 +1028,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private void LoadFallbackCatalog()
     {
         rows.Clear();
+        rows.Add(new PackageRow(InstallerPackageSpec));
         rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.artnetlink", "VLiveKit ArtNetLink", "Packages/VLiveKit_ArtNetLink", "Assets/toshi.VLiveKit/ArtNetLink", "https://github.com/toshi-kundesu/VLiveKit_ArtNetLink", "https://github.com/toshi-kundesu/VLiveKit_ArtNetLink#readme")));
         rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.cameraunit", "VLive Camera Unit", "Packages/VLiveKit_camera", "Assets/toshi.VLiveKit/VLiveCameraUnit", "https://github.com/toshi-kundesu/VLiveCameraUnit", "https://github.com/toshi-kundesu/VLiveCameraUnit#readme")));
         rows.Add(new PackageRow(new PackageSpec("com.toshi.vlivekit.ledvision", "VLiveKit LED Vision", "Packages/VLiveKit_LEDVision", "Assets/toshi.VLiveKit/LEDVision", "https://github.com/toshi-kundesu/VLiveKit_LEDVision", "https://github.com/toshi-kundesu/VLiveKit_LEDVision#readme")));
@@ -1129,6 +1117,40 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     {
         var dashIndex = version.IndexOf('-');
         return dashIndex >= 0 ? version.Substring(0, dashIndex) : version;
+    }
+
+    private static PackageSpec InstallerPackageSpec
+    {
+        get
+        {
+            return new PackageSpec(
+                CatalogPackageName,
+                "VLiveKitPackageManager",
+                "Packages/VLiveKit",
+                "Packages/VLiveKit",
+                "https://github.com/toshi-kundesu/VLiveKit",
+                "https://github.com/toshi-kundesu/VLiveKit#readme");
+        }
+    }
+
+    private void EnsureInstallerRow()
+    {
+        for (var i = 0; i < rows.Count; i++)
+        {
+            if (rows[i].Spec.PackageName == CatalogPackageName)
+            {
+                if (i > 0)
+                {
+                    var row = rows[i];
+                    rows.RemoveAt(i);
+                    rows.Insert(0, row);
+                }
+
+                return;
+            }
+        }
+
+        rows.Insert(0, new PackageRow(InstallerPackageSpec));
     }
 
     private readonly struct PackageSpec

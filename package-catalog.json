@@ -1,6 +1,14 @@
 {
   "packages": [
     {
+      "name": "com.toshi.vlivekit",
+      "displayName": "VLiveKitPackageManager",
+      "packageFolderPath": "Packages/VLiveKit",
+      "assetFolderPath": "Packages/VLiveKit",
+      "repositoryUrl": "https://github.com/toshi-kundesu/VLiveKit",
+      "documentationUrl": "https://github.com/toshi-kundesu/VLiveKit#readme"
+    },
+    {
       "name": "com.toshi.vlivekit.artnetlink",
       "displayName": "VLiveKit ArtNetLink",
       "packageFolderPath": "Packages/VLiveKit_ArtNetLink",
