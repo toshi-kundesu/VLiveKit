@@ -9,7 +9,7 @@ using UnityEngine;
 
 internal sealed class VLiveKitErrorLogExporter : EditorWindow
 {
-    private const string MenuRoot = "toshi/VLiveKit/";
+    private const string MenuRoot = "toshi/VLiveKit/Console/";
     private const string OutputFolder = "Logs/VLiveKitConsoleLogs";
 
     private Vector2 scrollPosition;

@@ -1,7 +1,7 @@
 ﻿{
     "name":  "com.toshi.vlivekit",
     "displayName":  "VLiveKit",
-    "version":  "0.1.19",
+    "version":  "0.1.20",
     "unity":  "2022.3",
     "description":  "Unity Editor tools for installing VLiveKit packages and exporting console error logs.",
     "author":  {

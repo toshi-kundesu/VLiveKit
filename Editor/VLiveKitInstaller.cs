@@ -3,10 +3,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.PackageManager;
+using UnityEditor.PackageManager.UI;
 using UnityEditor.PackageManager.Requests;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -14,11 +16,38 @@ using UnityEngine.Networking;
 [InitializeOnLoad]
 internal sealed class VLiveKitInstallerWindow : EditorWindow
 {
-    private const string MenuRoot = "toshi/VLiveKit/";
+    private const string MenuRoot = "toshi/VLiveKit/Package Manager/";
     private const string RegistryUrl = "https://registry.npmjs.org/";
     private const string CatalogPackageName = "com.toshi.vlivekit";
+    private const string LensFiltersPackageName = "com.toshi.vlivekit.lensfilters";
     private const string CatalogFileName = "package-catalog.json";
     private const string PromptPrefsKeyPrefix = "VLiveKitInstaller.PromptShown.";
+    private const string HDRenderPipelineGlobalSettingsTypeName = "UnityEngine.Rendering.HighDefinition.HDRenderPipelineGlobalSettings, Unity.RenderPipelines.HighDefinition.Runtime";
+    private const string HDRPBeforePostProcessPropertyName = "beforePostProcessCustomPostProcesses";
+    private const string HDRPAfterPostProcessPropertyName = "afterPostProcessCustomPostProcesses";
+
+    private static readonly RecommendedPostProcessType[] RecommendedBeforePostProcesses =
+    {
+        new RecommendedPostProcessType("UnityEngine.Rendering.HighDefinition.Compositor.ChromaKeying", "Unity.RenderPipelines.HighDefinition.Runtime"),
+        new RecommendedPostProcessType("UnityEngine.Rendering.HighDefinition.Compositor.AlphaInjection", "Unity.RenderPipelines.HighDefinition.Runtime"),
+        new RecommendedPostProcessType("Kino.PostProcessing.diffusion", "Kino.Postprocessing"),
+        new RecommendedPostProcessType("Kino.PostProcessing.StreakTest", "Kino.Postprocessing"),
+        new RecommendedPostProcessType("Kino.PostProcessing.GenshinColorGrading", "Kino.Postprocessing"),
+        new RecommendedPostProcessType("Kino.PostProcessing.Streak", "Kino.Postprocessing"),
+        new RecommendedPostProcessType("Kino.PostProcessing.MyPostFx", "Kino.Postprocessing")
+    };
+
+    private static readonly RecommendedPostProcessType[] RecommendedAfterPostProcesses =
+    {
+        new RecommendedPostProcessType("Kino.PostProcessing.GenshinBloom", "Kino.Postprocessing"),
+        new RecommendedPostProcessType("Kino.PostProcessing.Recolor", "Kino.Postprocessing"),
+        new RecommendedPostProcessType("Kino.PostProcessing.Glitch", "Kino.Postprocessing"),
+        new RecommendedPostProcessType("Kino.PostProcessing.Utility", "Kino.Postprocessing"),
+        new RecommendedPostProcessType("Kino.PostProcessing.Slice", "Kino.Postprocessing"),
+        new RecommendedPostProcessType("Kino.PostProcessing.Sharpen", "Kino.Postprocessing"),
+        new RecommendedPostProcessType("Kino.PostProcessing.Overlay", "Kino.Postprocessing"),
+        new RecommendedPostProcessType("Kino.PostProcessing.TestCard", "Kino.Postprocessing")
+    };
 
     private static bool promptedThisSession;
 
@@ -57,7 +86,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         EditorApplication.delayCall += ShowInstallPromptOnce;
     }
 
-    [MenuItem(MenuRoot + "Package Manager")]
+    [MenuItem(MenuRoot + "Open")]
     private static void OpenWindow()
     {
         var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitPackageManager");
@@ -81,10 +110,10 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         window.RefreshAndInstallMissing();
     }
 
-    [MenuItem(MenuRoot + "Open Installer Dialog")]
-    private static void OpenInstallerDialog()
+    [MenuItem(MenuRoot + "Apply Recommended HDRP Volume Settings")]
+    private static void ApplyRecommendedHDRPVolumeSettingsFromMenu()
     {
-        OpenWindow();
+        ApplyRecommendedHDRPVolumeSettings();
     }
 
     private static void ShowInstallPromptOnce()
@@ -696,6 +725,12 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             VLiveKitErrorLogExporter.OpenWindow();
         }
 
+        GUI.enabled = GUI.enabled && IsLensFiltersInstalled();
+        if (GUILayout.Button("HDRP Volume", EditorStyles.toolbarButton, GUILayout.Width(92f)))
+        {
+            ApplyRecommendedHDRPVolumeSettings();
+        }
+
         GUI.enabled = true;
         GUILayout.FlexibleSpace();
         GUILayout.Label("Use Update All or Refresh in the header.", mutedStyle);
@@ -798,6 +833,13 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             Application.OpenURL(row.Spec.DocumentationUrl);
         }
 
+        var canImportSamples = row.Spec.PackageName != CatalogPackageName;
+        GUI.enabled = addRequest == null && removeRequest == null && !isChecking && row.State != InstallState.Missing && canImportSamples;
+        if (canImportSamples && GUILayout.Button("Samples", toolbarButtonStyle, GUILayout.Width(72f)))
+        {
+            ImportSamples(row);
+        }
+
         GUI.enabled = addRequest == null && removeRequest == null && !isChecking && row.CanInstallFromRegistry;
         if (row.State == InstallState.Missing)
         {
@@ -871,6 +913,230 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         GUILayout.Label(label, mutedStyle);
         GUILayout.Label(value, EditorStyles.boldLabel);
         EditorGUILayout.EndVertical();
+    }
+
+    private static void ImportSamples(PackageRow row)
+    {
+        if (row == null || row.State == InstallState.Missing)
+        {
+            return;
+        }
+
+        var version = row.InstalledVersion;
+        if (string.IsNullOrEmpty(version) || version == "manifest" || version == "local" || version == "assets")
+        {
+            version = ReadLocalPackageVersion(row.Spec);
+        }
+
+        if (string.IsNullOrEmpty(version))
+        {
+            EditorUtility.DisplayDialog("VLiveKit Samples", "Package version could not be resolved.", "OK");
+            return;
+        }
+
+        var samples = new List<Sample>(Sample.FindByPackage(row.Spec.PackageName, version));
+        if (samples.Count == 0)
+        {
+            EditorUtility.DisplayDialog("VLiveKit Samples", "No samples were found for " + row.Spec.DisplayName + ".", "OK");
+            return;
+        }
+
+        var imported = 0;
+        foreach (var sample in samples)
+        {
+            if (sample.Import(Sample.ImportOptions.OverridePreviousImports))
+            {
+                imported++;
+            }
+        }
+
+        AssetDatabase.Refresh();
+        EditorUtility.DisplayDialog(
+            "VLiveKit Samples",
+            "Imported " + imported + " sample(s) for " + row.Spec.DisplayName + ".",
+            "OK");
+    }
+
+    private static void ApplyRecommendedHDRPVolumeSettings()
+    {
+        if (!IsLensFiltersInstalledInProject())
+        {
+            EditorUtility.DisplayDialog(
+                "VLiveKit HDRP Volume Settings",
+                "VLive Lens Filters is not installed. Install it first, then apply the recommended HDRP Volume settings.",
+                "OK");
+            return;
+        }
+
+        var settingsAsset = GetHDRPGlobalSettingsAsset();
+        if (settingsAsset == null)
+        {
+            EditorUtility.DisplayDialog(
+                "VLiveKit HDRP Volume Settings",
+                "HDRP Global Settings asset was not found. Open Project Settings > Graphics once, then try again.",
+                "OK");
+            return;
+        }
+
+        var missingTypes = new List<string>();
+        var beforeTypes = ResolveRecommendedPostProcessTypes(RecommendedBeforePostProcesses, missingTypes);
+        var afterTypes = ResolveRecommendedPostProcessTypes(RecommendedAfterPostProcesses, missingTypes);
+
+        if (beforeTypes.Count == 0 && afterTypes.Count == 0)
+        {
+            EditorUtility.DisplayDialog(
+                "VLiveKit HDRP Volume Settings",
+                "Recommended post process types were not found. Install VLive Lens Filters, then try again.",
+                "OK");
+            return;
+        }
+
+        var serializedObject = new SerializedObject(settingsAsset);
+        serializedObject.Update();
+
+        var changed = false;
+        changed |= ApplyRecommendedPostProcessOrder(serializedObject, HDRPBeforePostProcessPropertyName, beforeTypes);
+        changed |= ApplyRecommendedPostProcessOrder(serializedObject, HDRPAfterPostProcessPropertyName, afterTypes);
+
+        if (changed)
+        {
+            serializedObject.ApplyModifiedProperties();
+            EditorUtility.SetDirty(settingsAsset);
+            AssetDatabase.SaveAssets();
+        }
+
+        var message = changed
+            ? "Applied recommended HDRP custom post process order."
+            : "Recommended HDRP custom post process order is already applied.";
+
+        if (missingTypes.Count > 0)
+        {
+            message += "\n\nSkipped missing type(s):\n" + string.Join("\n", missingTypes);
+        }
+
+        EditorUtility.DisplayDialog("VLiveKit HDRP Volume Settings", message, "OK");
+    }
+
+    private bool IsLensFiltersInstalled()
+    {
+        var row = FindRowByPackageId(LensFiltersPackageName);
+        return row != null && row.State != InstallState.Missing;
+    }
+
+    private static bool IsLensFiltersInstalledInProject()
+    {
+        var manifestJson = ReadManifestJson();
+        if (!string.IsNullOrEmpty(manifestJson) && manifestJson.Contains("\"" + LensFiltersPackageName + "\""))
+        {
+            return true;
+        }
+
+        return Directory.Exists(ToProjectPath("Packages/VLiveKit_LiveLensFilters")) ||
+            AssetDatabase.IsValidFolder("Assets/toshi.VLiveKit/LiveLensFilters") ||
+            Directory.Exists(ToProjectPath("Assets/toshi.VLiveKit/LiveLensFilters"));
+    }
+
+    private static UnityEngine.Object GetHDRPGlobalSettingsAsset()
+    {
+        var settingsType = Type.GetType(HDRenderPipelineGlobalSettingsTypeName);
+        if (settingsType == null)
+        {
+            return null;
+        }
+
+        var ensureMethod = settingsType.GetMethod("Ensure", BindingFlags.Static | BindingFlags.NonPublic, null, new[] { typeof(bool) }, null);
+        if (ensureMethod != null)
+        {
+            try
+            {
+                return ensureMethod.Invoke(null, new object[] { true }) as UnityEngine.Object;
+            }
+            catch (TargetInvocationException exception)
+            {
+                Debug.LogWarning("Failed to ensure HDRP Global Settings asset. " + exception.InnerException?.Message);
+                return null;
+            }
+        }
+
+        var instanceProperty = settingsType.GetProperty("instance", BindingFlags.Static | BindingFlags.Public);
+        return instanceProperty != null ? instanceProperty.GetValue(null) as UnityEngine.Object : null;
+    }
+
+    private static List<string> ResolveRecommendedPostProcessTypes(RecommendedPostProcessType[] recommendedTypes, List<string> missingTypes)
+    {
+        var resolvedTypes = new List<string>();
+        foreach (var recommendedType in recommendedTypes)
+        {
+            var type = Type.GetType(recommendedType.TypeName + ", " + recommendedType.AssemblyName);
+            if (type == null)
+            {
+                missingTypes.Add(recommendedType.TypeName);
+                continue;
+            }
+
+            resolvedTypes.Add(type.AssemblyQualifiedName);
+        }
+
+        return resolvedTypes;
+    }
+
+    private static bool ApplyRecommendedPostProcessOrder(SerializedObject serializedObject, string propertyName, List<string> recommendedTypes)
+    {
+        var property = serializedObject.FindProperty(propertyName);
+        if (property == null || !property.isArray)
+        {
+            return false;
+        }
+
+        var currentTypes = new List<string>();
+        for (var i = 0; i < property.arraySize; i++)
+        {
+            var value = property.GetArrayElementAtIndex(i).stringValue;
+            if (!string.IsNullOrEmpty(value))
+            {
+                currentTypes.Add(value);
+            }
+        }
+
+        var orderedTypes = new List<string>(recommendedTypes);
+        foreach (var currentType in currentTypes)
+        {
+            if (!orderedTypes.Contains(currentType))
+            {
+                orderedTypes.Add(currentType);
+            }
+        }
+
+        if (ListsMatch(currentTypes, orderedTypes))
+        {
+            return false;
+        }
+
+        property.arraySize = orderedTypes.Count;
+        for (var i = 0; i < orderedTypes.Count; i++)
+        {
+            property.GetArrayElementAtIndex(i).stringValue = orderedTypes[i];
+        }
+
+        return true;
+    }
+
+    private static bool ListsMatch(List<string> left, List<string> right)
+    {
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < left.Count; i++)
+        {
+            if (left[i] != right[i])
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void DrawFooter()
@@ -1358,6 +1624,18 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         public string AssetFolderPath { get; }
         public string RepositoryUrl { get; }
         public string DocumentationUrl { get; }
+    }
+
+    private readonly struct RecommendedPostProcessType
+    {
+        public RecommendedPostProcessType(string typeName, string assemblyName)
+        {
+            TypeName = typeName;
+            AssemblyName = assemblyName;
+        }
+
+        public string TypeName { get; }
+        public string AssemblyName { get; }
     }
 
     [Serializable]
