@@ -1,12 +1,16 @@
-# VLiveKit
+# VLiveKitInstaller
 
-VLiveKit is a small Unity Editor installer package.
+VLiveKitInstaller is a small Unity Editor package for installing and updating VLiveKit packages.
 
 This package does not depend on the individual VLiveKit packages. It adds an installer menu that checks the current project and installs missing VLiveKit packages when you choose to do so.
 
 ## Menu
 
 After the package is imported, open:
+
+`toshi > VLiveKit Installer`
+
+The legacy menu is also available at:
 
 `toshi > VLiveKit > Package Manager`
 
@@ -29,11 +33,26 @@ The exporter can copy or write Unity Console errors to `Logs/VLiveKitConsoleLogs
 
 ## Package
 
-- Package name: `com.toshi.vlivekit`
+- Display name: `VLiveKitInstaller`
+- Package ID: `com.toshi.vlivekit`
 - Unity: `2022.3`
 - Repository: https://github.com/toshi-kundesu/VLiveKit
 
 ## Install
+
+### Bootstrap script
+
+Copy `Documentation~/VLiveKitInstallerBootstrap.cs` to `Assets/Editor/VLiveKitInstallerBootstrap.cs`, then return to Unity.
+
+Unity shows a `VLiveKitInstaller` prompt. Choose `Install` to add the `com.toshi` scoped registry and install `com.toshi.vlivekit` with Unity Package Manager.
+
+If the project is not managed with Git, make a project backup before installing packages.
+
+After installation, open:
+
+`toshi > VLiveKit Installer`
+
+### Manual manifest setup
 
 Configure the scoped registry in `Packages/manifest.json`.
 

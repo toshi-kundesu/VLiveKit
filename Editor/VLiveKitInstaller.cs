@@ -92,10 +92,16 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private static void OpenWindow()
     {
         VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry();
-        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitPackageManager");
+        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitInstaller");
         window.minSize = new Vector2(900f, 520f);
         window.Show();
         window.Refresh();
+    }
+
+    [MenuItem("toshi/VLiveKit Installer")]
+    private static void OpenInstallerShortcut()
+    {
+        OpenWindow();
     }
 
     [MenuItem(MenuRoot + "Check Install Status")]
@@ -108,7 +114,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private static void InstallMissingPackages()
     {
         VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry();
-        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitPackageManager");
+        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitInstaller");
         window.minSize = new Vector2(900f, 520f);
         window.Show();
         window.RefreshAndInstallMissing();
@@ -118,14 +124,14 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private static void InstallAllPackages()
     {
         VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry();
-        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitPackageManager");
+        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitInstaller");
         window.minSize = new Vector2(900f, 520f);
         window.Show();
         window.RefreshAndInstallAll();
     }
 
-    [MenuItem(MenuRoot + "Apply Recommended HDRP Volume Settings")]
-    private static void ApplyRecommendedHDRPVolumeSettingsFromMenu()
+    [MenuItem(MenuRoot + "Recommended HDRP Volume Settings...")]
+    private static void OpenRecommendedHDRPVolumeSettingsFromMenu()
     {
         OpenRecommendedHDRPVolumeSettingsWindow();
     }
@@ -145,8 +151,8 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
 
         var result = EditorUtility.DisplayDialogComplex(
-            "VLiveKitPackageManager",
-            "Open VLiveKitPackageManager to check installed packages and available updates?",
+            "VLiveKitInstaller",
+            "Open VLiveKitInstaller to choose VLiveKit packages to install or update?\n\nIf this Unity project is not managed with Git, make a project backup before installing packages.",
             "Open",
             "Later",
             "Do Not Show Again");
@@ -180,6 +186,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         EnsureStyles();
         DrawHeader();
         DrawToolbar();
+        DrawBackupNotice();
         DrawSummary();
         DrawPackageList();
         DrawFooter();
@@ -503,6 +510,14 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
                 continue;
             }
 
+            if (row.Spec.PackageName == CatalogPackageName && IsInstallerSourcePresentInProject())
+            {
+                row.State = InstallState.LocalPackage;
+                row.InstalledVersion = ReadLocalPackageVersion(row.Spec) ?? ReadInstallerPackageVersion() ?? "local";
+                row.Message = "Installer source in project";
+                continue;
+            }
+
             if (AssetDatabase.IsValidFolder(row.Spec.AssetFolderPath) || Directory.Exists(ToProjectPath(row.Spec.AssetFolderPath)))
             {
                 row.State = InstallState.AssetsFolder;
@@ -561,7 +576,9 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private static bool IsInstallAllCandidate(PackageRow row)
     {
-        return !IsBlockedInstallTarget(row.Spec) && (row.State == InstallState.Missing || row.CanUpdate);
+        return row.Spec.PackageName != CatalogPackageName &&
+            !IsBlockedInstallTarget(row.Spec) &&
+            (row.State == InstallState.Missing || row.CanUpdate);
     }
 
     private void StartNextOperation()
@@ -597,7 +614,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             statusText = "Updated scoped registries. " + statusText;
         }
 
-        EditorUtility.DisplayProgressBar("VLiveKitPackageManager", statusText, GetOperationProgress());
+        EditorUtility.DisplayProgressBar("VLiveKitInstaller", statusText, GetOperationProgress());
         addRequest = Client.Add(packageId);
     }
 
@@ -622,7 +639,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         activeRemoveDisplayName = row.Spec.DisplayName;
         row.Message = "Uninstalling " + row.Spec.PackageName;
         statusText = "Uninstalling " + row.Spec.DisplayName;
-        EditorUtility.DisplayProgressBar("VLiveKitPackageManager", statusText, 0.5f);
+        EditorUtility.DisplayProgressBar("VLiveKitInstaller", statusText, 0.5f);
         removeRequest = Client.Remove(row.Spec.PackageName);
     }
 
@@ -705,7 +722,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         EditorGUI.DrawRect(new Rect(rect.x, rect.y + rect.height - 1f, rect.width, 1f), AccentColor(0.80f));
 
         var titleRect = new Rect(rect.x + 16f, rect.y + 12f, rect.width - 320f, 24f);
-        GUI.Label(titleRect, "VLiveKitPackageManager", headerStyle);
+        GUI.Label(titleRect, "VLiveKitInstaller", headerStyle);
 
         var subtitleRect = new Rect(rect.x + 16f, rect.y + 39f, rect.width - 330f, 18f);
         GUI.Label(subtitleRect, "Check versions, update packages, and jump to repositories or docs.", mutedStyle);
@@ -772,7 +789,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
 
         GUI.enabled = GUI.enabled && IsLensFiltersInstalled();
-        if (GUILayout.Button("HDRP Volume", EditorStyles.toolbarButton, GUILayout.Width(92f)))
+        if (GUILayout.Button("Recommended Settings", EditorStyles.toolbarButton, GUILayout.Width(140f)))
         {
             OpenRecommendedHDRPVolumeSettingsWindow();
         }
@@ -789,6 +806,18 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             var fillRect = new Rect(rect.x, rect.y, rect.width * GetOperationProgress(), rect.height);
             EditorGUI.DrawRect(fillRect, AccentColor(1f));
         }
+    }
+
+    private void DrawBackupNotice()
+    {
+        if (ProjectHasGitMetadata())
+        {
+            return;
+        }
+
+        EditorGUILayout.HelpBox(
+            "This project does not appear to be managed with Git. Back up the project before installing or updating packages.",
+            MessageType.Warning);
     }
 
     private void DrawSummary()
@@ -1005,7 +1034,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private static void OpenRecommendedHDRPVolumeSettingsWindow()
     {
-        var window = GetWindow<RecommendedHDRPVolumeSettingsWindow>(true, "VLiveKit HDRP Volume");
+        var window = GetWindow<RecommendedHDRPVolumeSettingsWindow>(true, "VLiveKit Recommended Settings");
         window.minSize = new Vector2(420f, 500f);
         window.ShowUtility();
     }
@@ -1528,6 +1557,54 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             value.IndexOf(pattern, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
+    private static bool ProjectHasGitMetadata()
+    {
+        var gitPath = ToProjectPath(".git");
+        return Directory.Exists(gitPath) || File.Exists(gitPath);
+    }
+
+    private static bool IsInstallerSourcePresentInProject()
+    {
+        var guids = AssetDatabase.FindAssets("VLiveKitInstaller t:Script");
+        foreach (var guid in guids)
+        {
+            var assetPath = AssetDatabase.GUIDToAssetPath(guid);
+            if (assetPath.EndsWith("/VLiveKitInstaller.cs", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return File.Exists(ToProjectPath("Packages/VLiveKit/Editor/VLiveKitInstaller.cs")) ||
+            File.Exists(ToProjectPath("Assets/VLiveKit/Editor/VLiveKitInstaller.cs"));
+    }
+
+    private static string ReadInstallerPackageVersion()
+    {
+        var candidates = new[]
+        {
+            ToProjectPath("Packages/VLiveKit/package.json"),
+            ToProjectPath("Assets/VLiveKit/package.json")
+        };
+
+        foreach (var candidate in candidates)
+        {
+            if (!File.Exists(candidate))
+            {
+                continue;
+            }
+
+            var json = File.ReadAllText(candidate);
+            var match = Regex.Match(json, "\"version\"\\s*:\\s*\"([^\"]+)\"");
+            if (match.Success)
+            {
+                return match.Groups[1].Value;
+            }
+        }
+
+        return null;
+    }
+
     private static string ReadLocalPackageVersion(PackageSpec package)
     {
         var packageJsonPath = FindLocalPackageJson(package);
@@ -1606,7 +1683,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         {
             return new PackageSpec(
                 CatalogPackageName,
-                "VLiveKitPackageManager",
+                "VLiveKitInstaller",
                 "Packages/VLiveKit",
                 "Packages/VLiveKit",
                 "https://github.com/toshi-kundesu/VLiveKit",
@@ -1646,7 +1723,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
         private void OnGUI()
         {
-            GUILayout.Label("Recommended HDRP Volume Settings", EditorStyles.boldLabel);
+            GUILayout.Label("Recommended Settings", EditorStyles.boldLabel);
             GUILayout.Space(4f);
 
             EditorGUILayout.BeginHorizontal();
@@ -1670,7 +1747,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
             GUILayout.Space(8f);
             GUI.enabled = selectedTypeNames.Count > 0;
-            if (GUILayout.Button("Apply Selected", GUILayout.Height(30f)))
+            if (GUILayout.Button("Apply Checked Items", GUILayout.Height(30f)))
             {
                 ApplyRecommendedHDRPVolumeSettings(new HashSet<string>(selectedTypeNames));
             }
