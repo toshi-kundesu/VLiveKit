@@ -21,6 +21,8 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private const string CatalogPackageName = "com.toshi.vlivekit";
     private const string LensFiltersPackageName = "com.toshi.vlivekit.lensfilters";
     private const string CatalogFileName = "package-catalog.json";
+    private const string ThirdPartyAssetsRepositoryName = "VLiveKit_ThirdPartyAssets";
+    private const string ThirdPartyUtilitiesPackageName = "com.toshi.vlivekit.thirdpartyutilities";
     private const string PromptPrefsKeyPrefix = "VLiveKitInstaller.PromptShown.";
     private const string HDRenderPipelineGlobalSettingsTypeName = "UnityEngine.Rendering.HighDefinition.HDRenderPipelineGlobalSettings, Unity.RenderPipelines.HighDefinition.Runtime";
     private const string HDRPBeforePostProcessPropertyName = "beforePostProcessCustomPostProcesses";
@@ -89,6 +91,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     [MenuItem(MenuRoot + "Open")]
     private static void OpenWindow()
     {
+        VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry();
         var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitPackageManager");
         window.minSize = new Vector2(900f, 520f);
         window.Show();
@@ -104,16 +107,27 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     [MenuItem(MenuRoot + "Install Missing Packages")]
     private static void InstallMissingPackages()
     {
+        VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry();
         var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitPackageManager");
         window.minSize = new Vector2(900f, 520f);
         window.Show();
         window.RefreshAndInstallMissing();
     }
 
+    [MenuItem(MenuRoot + "Install All Packages")]
+    private static void InstallAllPackages()
+    {
+        VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry();
+        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitPackageManager");
+        window.minSize = new Vector2(900f, 520f);
+        window.Show();
+        window.RefreshAndInstallAll();
+    }
+
     [MenuItem(MenuRoot + "Apply Recommended HDRP Volume Settings")]
     private static void ApplyRecommendedHDRPVolumeSettingsFromMenu()
     {
-        ApplyRecommendedHDRPVolumeSettings();
+        OpenRecommendedHDRPVolumeSettingsWindow();
     }
 
     private static void ShowInstallPromptOnce()
@@ -178,6 +192,13 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         EditorApplication.delayCall += QueueMissingAfterRefresh;
     }
 
+    private void RefreshAndInstallAll()
+    {
+        Refresh();
+        statusText = "Checking before installing all packages...";
+        EditorApplication.delayCall += QueueAllAfterRefresh;
+    }
+
     private void QueueMissingAfterRefresh()
     {
         if (isChecking || listRequest != null || latestRequests.Count > 0)
@@ -187,6 +208,17 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
 
         QueueRows(row => row.State == InstallState.Missing);
+    }
+
+    private void QueueAllAfterRefresh()
+    {
+        if (isChecking || listRequest != null || latestRequests.Count > 0)
+        {
+            EditorApplication.delayCall += QueueAllAfterRefresh;
+            return;
+        }
+
+        QueueRows(IsInstallAllCandidate);
     }
 
     private void Refresh()
@@ -527,6 +559,11 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         StartNextOperation();
     }
 
+    private static bool IsInstallAllCandidate(PackageRow row)
+    {
+        return !IsBlockedInstallTarget(row.Spec) && (row.State == InstallState.Missing || row.CanUpdate);
+    }
+
     private void StartNextOperation()
     {
         if (addRequest != null)
@@ -550,10 +587,14 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         activeDisplayName = activeOperation.Spec.DisplayName;
         activeOperation.Message = "Adding " + packageId;
         statusText = GetOperationProgressLabel(activeOperation.Spec.DisplayName);
+        if (VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry())
+        {
+            statusText = "Updated VLiveKit scoped registry. " + statusText;
+        }
+
         if (EnsureExternalScopedRegistry())
         {
             statusText = "Updated scoped registries. " + statusText;
-            AssetDatabase.Refresh();
         }
 
         EditorUtility.DisplayProgressBar("VLiveKitPackageManager", statusText, GetOperationProgress());
@@ -715,6 +756,11 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     {
         EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
         GUI.enabled = !isChecking && addRequest == null && removeRequest == null;
+        if (GUILayout.Button("Install All", EditorStyles.toolbarButton, GUILayout.Width(82f)))
+        {
+            QueueRows(IsInstallAllCandidate);
+        }
+
         if (GUILayout.Button("Install Missing", EditorStyles.toolbarButton, GUILayout.Width(110f)))
         {
             QueueRows(row => row.State == InstallState.Missing);
@@ -728,7 +774,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         GUI.enabled = GUI.enabled && IsLensFiltersInstalled();
         if (GUILayout.Button("HDRP Volume", EditorStyles.toolbarButton, GUILayout.Width(92f)))
         {
-            ApplyRecommendedHDRPVolumeSettings();
+            OpenRecommendedHDRPVolumeSettingsWindow();
         }
 
         GUI.enabled = true;
@@ -957,7 +1003,14 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             "OK");
     }
 
-    private static void ApplyRecommendedHDRPVolumeSettings()
+    private static void OpenRecommendedHDRPVolumeSettingsWindow()
+    {
+        var window = GetWindow<RecommendedHDRPVolumeSettingsWindow>(true, "VLiveKit HDRP Volume");
+        window.minSize = new Vector2(420f, 500f);
+        window.ShowUtility();
+    }
+
+    private static void ApplyRecommendedHDRPVolumeSettings(HashSet<string> selectedTypeNames)
     {
         if (!IsLensFiltersInstalledInProject())
         {
@@ -979,8 +1032,8 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
 
         var missingTypes = new List<string>();
-        var beforeTypes = ResolveRecommendedPostProcessTypes(RecommendedBeforePostProcesses, missingTypes);
-        var afterTypes = ResolveRecommendedPostProcessTypes(RecommendedAfterPostProcesses, missingTypes);
+        var beforeTypes = ResolveRecommendedPostProcessTypes(RecommendedBeforePostProcesses, missingTypes, selectedTypeNames);
+        var afterTypes = ResolveRecommendedPostProcessTypes(RecommendedAfterPostProcesses, missingTypes, selectedTypeNames);
 
         if (beforeTypes.Count == 0 && afterTypes.Count == 0)
         {
@@ -1062,11 +1115,16 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         return instanceProperty != null ? instanceProperty.GetValue(null) as UnityEngine.Object : null;
     }
 
-    private static List<string> ResolveRecommendedPostProcessTypes(RecommendedPostProcessType[] recommendedTypes, List<string> missingTypes)
+    private static List<string> ResolveRecommendedPostProcessTypes(RecommendedPostProcessType[] recommendedTypes, List<string> missingTypes, HashSet<string> selectedTypeNames)
     {
         var resolvedTypes = new List<string>();
         foreach (var recommendedType in recommendedTypes)
         {
+            if (selectedTypeNames != null && !selectedTypeNames.Contains(recommendedType.TypeName))
+            {
+                continue;
+            }
+
             var type = Type.GetType(recommendedType.TypeName + ", " + recommendedType.AssemblyName);
             if (type == null)
             {
@@ -1407,13 +1465,19 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
             var repositoryUrl = string.IsNullOrEmpty(item.repositoryUrl) ? BuildFallbackRepositoryUrl(item.name) : item.repositoryUrl;
             var documentationUrl = string.IsNullOrEmpty(item.documentationUrl) ? repositoryUrl + "#readme" : item.documentationUrl;
-            loadedRows.Add(new PackageRow(new PackageSpec(
+            var packageSpec = new PackageSpec(
                 item.name,
                 item.displayName,
                 item.packageFolderPath,
                 item.assetFolderPath,
                 repositoryUrl,
-                documentationUrl)));
+                documentationUrl);
+            if (IsBlockedInstallTarget(packageSpec))
+            {
+                continue;
+            }
+
+            loadedRows.Add(new PackageRow(packageSpec));
         }
 
         return loadedRows.Count > 0;
@@ -1443,61 +1507,25 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private static bool EnsureExternalScopedRegistry()
     {
-        var manifestPath = ToProjectPath("Packages/manifest.json");
-        if (!File.Exists(manifestPath))
-        {
-            return false;
-        }
+        return VLiveKitManifestUtility.EnsureExternalScopedRegistry();
+    }
 
-        var json = File.ReadAllText(manifestPath);
-        if (json.Contains("\"jp.keijiro\"") && json.Contains("\"com.hecomi\""))
-        {
-            return false;
-        }
+    private static bool IsBlockedInstallTarget(PackageSpec package)
+    {
+        return ContainsIgnoreCase(package.PackageName, ThirdPartyUtilitiesPackageName) ||
+            ContainsIgnoreCase(package.PackageName, "thirdpartyassets") ||
+            ContainsIgnoreCase(package.DisplayName, "thirdpartyassets") ||
+            ContainsIgnoreCase(package.PackageFolderPath, ThirdPartyAssetsRepositoryName) ||
+            ContainsIgnoreCase(package.AssetFolderPath, ThirdPartyAssetsRepositoryName) ||
+            ContainsIgnoreCase(package.RepositoryUrl, ThirdPartyAssetsRepositoryName) ||
+            ContainsIgnoreCase(package.DocumentationUrl, ThirdPartyAssetsRepositoryName);
+    }
 
-        var registryBlock =
-            "    {\n" +
-            "      \"name\": \"npmjs\",\n" +
-            "      \"url\": \"https://registry.npmjs.com\",\n" +
-            "      \"scopes\": [\n" +
-            "        \"jp.keijiro\",\n" +
-            "        \"com.hecomi\"\n" +
-            "      ]\n" +
-            "    }";
-
-        string updatedJson;
-        var scopedRegistryMatch = Regex.Match(json, "\"scopedRegistries\"\\s*:\\s*\\[");
-        if (scopedRegistryMatch.Success)
-        {
-            var insertIndex = scopedRegistryMatch.Index + scopedRegistryMatch.Length;
-            var nextIndex = insertIndex;
-            while (nextIndex < json.Length && char.IsWhiteSpace(json[nextIndex]))
-            {
-                nextIndex++;
-            }
-
-            var suffix = nextIndex < json.Length && json[nextIndex] == ']'
-                ? "\n" + registryBlock + "\n  "
-                : "\n" + registryBlock + ",";
-            updatedJson = json.Insert(insertIndex, suffix);
-        }
-        else
-        {
-            var braceIndex = json.IndexOf('{');
-            if (braceIndex < 0)
-            {
-                return false;
-            }
-
-            var scopedRegistriesBlock =
-                "\n  \"scopedRegistries\": [\n" +
-                registryBlock +
-                "\n  ],";
-            updatedJson = json.Insert(braceIndex + 1, scopedRegistriesBlock);
-        }
-
-        File.WriteAllText(manifestPath, updatedJson, new UTF8Encoding(false));
-        return true;
+    private static bool ContainsIgnoreCase(string value, string pattern)
+    {
+        return !string.IsNullOrEmpty(value) &&
+            !string.IsNullOrEmpty(pattern) &&
+            value.IndexOf(pattern, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static string ReadLocalPackageVersion(PackageSpec package)
@@ -1606,6 +1634,99 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         rows.Insert(0, new PackageRow(InstallerPackageSpec));
     }
 
+    private sealed class RecommendedHDRPVolumeSettingsWindow : EditorWindow
+    {
+        private readonly HashSet<string> selectedTypeNames = new HashSet<string>();
+        private Vector2 scrollPosition;
+
+        private void OnEnable()
+        {
+            SelectAll();
+        }
+
+        private void OnGUI()
+        {
+            GUILayout.Label("Recommended HDRP Volume Settings", EditorStyles.boldLabel);
+            GUILayout.Space(4f);
+
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("All", EditorStyles.miniButtonLeft, GUILayout.Width(70f)))
+            {
+                SelectAll();
+            }
+
+            if (GUILayout.Button("None", EditorStyles.miniButtonRight, GUILayout.Width(70f)))
+            {
+                selectedTypeNames.Clear();
+            }
+
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+
+            scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
+            DrawRecommendedGroup("Before Post Process", RecommendedBeforePostProcesses);
+            DrawRecommendedGroup("After Post Process", RecommendedAfterPostProcesses);
+            EditorGUILayout.EndScrollView();
+
+            GUILayout.Space(8f);
+            GUI.enabled = selectedTypeNames.Count > 0;
+            if (GUILayout.Button("Apply Selected", GUILayout.Height(30f)))
+            {
+                ApplyRecommendedHDRPVolumeSettings(new HashSet<string>(selectedTypeNames));
+            }
+
+            GUI.enabled = true;
+        }
+
+        private void DrawRecommendedGroup(string label, RecommendedPostProcessType[] postProcessTypes)
+        {
+            GUILayout.Space(8f);
+            GUILayout.Label(label, EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            foreach (var postProcessType in postProcessTypes)
+            {
+                var selected = selectedTypeNames.Contains(postProcessType.TypeName);
+                var nextSelected = EditorGUILayout.ToggleLeft(GetRecommendedDisplayName(postProcessType), selected);
+                if (nextSelected == selected)
+                {
+                    continue;
+                }
+
+                if (nextSelected)
+                {
+                    selectedTypeNames.Add(postProcessType.TypeName);
+                }
+                else
+                {
+                    selectedTypeNames.Remove(postProcessType.TypeName);
+                }
+            }
+
+            EditorGUILayout.EndVertical();
+        }
+
+        private void SelectAll()
+        {
+            selectedTypeNames.Clear();
+            AddAll(RecommendedBeforePostProcesses);
+            AddAll(RecommendedAfterPostProcesses);
+        }
+
+        private void AddAll(RecommendedPostProcessType[] postProcessTypes)
+        {
+            foreach (var postProcessType in postProcessTypes)
+            {
+                selectedTypeNames.Add(postProcessType.TypeName);
+            }
+        }
+
+        private static string GetRecommendedDisplayName(RecommendedPostProcessType postProcessType)
+        {
+            var dotIndex = postProcessType.TypeName.LastIndexOf('.');
+            return dotIndex >= 0 ? postProcessType.TypeName.Substring(dotIndex + 1) : postProcessType.TypeName;
+        }
+    }
+
     private readonly struct PackageSpec
     {
         public PackageSpec(string packageName, string displayName, string packageFolderPath, string assetFolderPath, string repositoryUrl, string documentationUrl)
@@ -1671,7 +1792,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         public string Message { get; set; }
 
         public bool IsLocal => State == InstallState.LocalPackage || State == InstallState.AssetsFolder;
-        public bool CanInstallFromRegistry => !IsLocal && LatestCheckState != LatestState.Checking;
+        public bool CanInstallFromRegistry => !IsBlockedInstallTarget(Spec) && !IsLocal && LatestCheckState != LatestState.Checking;
         public bool CanUpdate => State != InstallState.Missing && !IsLocal && !string.IsNullOrEmpty(InstalledVersion) && !string.IsNullOrEmpty(LatestVersion) && CompareVersions(InstalledVersion, LatestVersion) < 0;
         public bool CanUninstall => State == InstallState.PackageManager && Spec.PackageName != CatalogPackageName;
 

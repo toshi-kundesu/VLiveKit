@@ -21,6 +21,7 @@ internal sealed class VLiveKitErrorLogExporter : EditorWindow
     [MenuItem(MenuRoot + "Error Log Exporter")]
     internal static void OpenWindow()
     {
+        VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry();
         var window = GetWindow<VLiveKitErrorLogExporter>("VLiveKit Logs");
         window.minSize = new Vector2(680f, 420f);
         window.RefreshPreview();
@@ -30,6 +31,7 @@ internal sealed class VLiveKitErrorLogExporter : EditorWindow
     [MenuItem(MenuRoot + "Export Console Errors")]
     private static void ExportConsoleErrors()
     {
+        VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry();
         var path = Export(errorsOnly: true, includeStackTrace: true);
         if (!string.IsNullOrEmpty(path))
         {
@@ -40,6 +42,7 @@ internal sealed class VLiveKitErrorLogExporter : EditorWindow
     [MenuItem(MenuRoot + "Copy Console Errors")]
     private static void CopyConsoleErrors()
     {
+        VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry();
         var text = BuildLogText(errorsOnly: true, includeStackTrace: true);
         EditorGUIUtility.systemCopyBuffer = text;
         Debug.Log("VLiveKit console errors copied to clipboard.");
