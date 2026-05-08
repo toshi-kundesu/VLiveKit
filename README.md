@@ -46,7 +46,7 @@ Import `VLiveKitPackageManagerBootstrap.unitypackage` into the Unity project.
 
 Unity adds a bootstrap script under `Assets/VLiveKitPackageManagerBootstrap/Editor/` and shows a `VLiveKitPackageManager` prompt. Choose `Set Up` to add the `com.toshi` scoped registry and install `com.toshi.vlivekit` with Unity Package Manager.
 
-Unity may show a `Missing Signature` notice for scoped registry packages. This is expected for packages installed from the npm scoped registry.
+Unity 6.3 and newer can verify UPM package signatures. Use signed `.tgz` releases when publishing to npm so Unity Package Manager can show a verified package instead of `Missing Signature`.
 
 If the project is not managed with Git, make a project backup before installing packages.
 
@@ -81,4 +81,17 @@ Configure the scoped registry in `Packages/manifest.json`.
     "com.toshi.vlivekit": "0.1.26"
   }
 }
+```
+
+## Signed release helper
+
+`Tools~/SignVLiveKitPackages.ps1` signs packages listed in `package-catalog.json` with Unity 6.3 `-upmPack`. It skips third-party package entries and verifies that each signed tarball contains `.attestation.p7m` before optional npm publish.
+
+Provide credentials through local environment variables instead of committing or pasting them:
+
+```powershell
+$env:UNITY_CLOUD_ORG="your_org_id"
+$env:UNITY_USERNAME="you@example.com"
+$env:UNITY_PASSWORD="your_password"
+powershell -ExecutionPolicy Bypass -File Packages\VLiveKit\Tools~\SignVLiveKitPackages.ps1 -Publish -IncludePackageManager
 ```

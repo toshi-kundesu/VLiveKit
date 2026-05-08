@@ -58,15 +58,14 @@ internal sealed class VLiveKitErrorLogExporter : EditorWindow
 
     private void DrawHeader()
     {
-        EditorGUILayout.Space(8f);
-        GUILayout.Label("VLiveKit Error Log Exporter", new GUIStyle(EditorStyles.boldLabel) { fontSize = 18 });
-        GUILayout.Label("Export or copy Unity Console output without selecting entries one by one.", EditorStyles.miniLabel);
-        EditorGUILayout.Space(6f);
+        VLiveKitEditorUI.DrawHeader(
+            "VLiveKit Logs",
+            "Export or copy Unity Console output without selecting entries one by one.");
     }
 
     private void DrawOptions()
     {
-        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        EditorGUILayout.BeginVertical(VLiveKitEditorUI.PanelStyle);
         errorsOnly = EditorGUILayout.ToggleLeft("Errors and exceptions only", errorsOnly);
         includeStackTrace = EditorGUILayout.ToggleLeft("Include stack traces", includeStackTrace);
         EditorGUILayout.EndVertical();
@@ -75,19 +74,19 @@ internal sealed class VLiveKitErrorLogExporter : EditorWindow
     private void DrawActions()
     {
         EditorGUILayout.BeginHorizontal();
-        if (GUILayout.Button("Refresh Preview", GUILayout.Height(28f)))
+        if (GUILayout.Button("Refresh Preview", VLiveKitEditorUI.SecondaryButtonStyle, GUILayout.Height(28f)))
         {
             RefreshPreview();
         }
 
-        if (GUILayout.Button("Copy", GUILayout.Height(28f)))
+        if (GUILayout.Button("Copy", VLiveKitEditorUI.PrimaryButtonStyle, GUILayout.Height(28f)))
         {
             previewText = BuildLogText(errorsOnly, includeStackTrace);
             EditorGUIUtility.systemCopyBuffer = previewText;
             ShowNotification(new GUIContent("Copied console log"));
         }
 
-        if (GUILayout.Button("Export", GUILayout.Height(28f)))
+        if (GUILayout.Button("Export", VLiveKitEditorUI.PrimaryButtonStyle, GUILayout.Height(28f)))
         {
             lastOutputPath = Export(errorsOnly, includeStackTrace);
             if (!string.IsNullOrEmpty(lastOutputPath))
@@ -99,7 +98,7 @@ internal sealed class VLiveKitErrorLogExporter : EditorWindow
 
         if (!string.IsNullOrEmpty(lastOutputPath))
         {
-            EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+            EditorGUILayout.BeginHorizontal(VLiveKitEditorUI.PanelStyle);
             EditorGUILayout.SelectableLabel(lastOutputPath, EditorStyles.miniLabel, GUILayout.Height(18f));
             if (GUILayout.Button("Reveal", EditorStyles.miniButton, GUILayout.Width(70f)))
             {
@@ -107,6 +106,8 @@ internal sealed class VLiveKitErrorLogExporter : EditorWindow
             }
             EditorGUILayout.EndHorizontal();
         }
+
+        VLiveKitEditorUI.DrawSeparator(6f, 8f);
     }
 
     private void DrawPreview()
@@ -116,7 +117,7 @@ internal sealed class VLiveKitErrorLogExporter : EditorWindow
             RefreshPreview();
         }
 
-        EditorGUILayout.LabelField("Preview", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("Preview", VLiveKitEditorUI.TableHeaderStyle);
         scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
         EditorGUILayout.TextArea(previewText, GUILayout.ExpandHeight(true));
         EditorGUILayout.EndScrollView();
