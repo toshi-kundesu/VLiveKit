@@ -75,6 +75,7 @@ mono_crash.*
 *.aab
 *.unitypackage
 *.unitypackage.meta
+!VLiveKitPackageManagerBootstrap.unitypackage
 *.app
 
 # Crashlytics generated file

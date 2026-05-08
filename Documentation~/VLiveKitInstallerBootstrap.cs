@@ -37,24 +37,7 @@ internal static class VLiveKitInstallerBootstrap
             return;
         }
 
-        var backupNotice = ProjectHasGitMetadata()
-            ? ""
-            : "\n\nThis Unity project does not appear to be managed with Git. Make a project backup before installing packages.";
-        var result = EditorUtility.DisplayDialogComplex(
-            "VLiveKitInstaller",
-            "Install VLiveKitInstaller with Unity Package Manager?" + backupNotice,
-            "Install",
-            "Later",
-            "Do Not Show Again");
-
-        if (result == 0)
-        {
-            Install();
-        }
-        else if (result == 2)
-        {
-            EditorPrefs.SetBool(key, true);
-        }
+        BootstrapPromptWindow.Open(key, !ProjectHasGitMetadata(), Install);
     }
 
     private static void Install()
@@ -81,14 +64,14 @@ internal static class VLiveKitInstallerBootstrap
         EditorApplication.update -= UpdateInstallRequest;
         if (addRequest.Status == StatusCode.Success)
         {
-            Debug.Log("VLiveKitInstaller installed.");
+            Debug.Log("VLiveKitPackageManager installed.");
             EditorApplication.delayCall += OpenInstallerIfAvailable;
         }
         else
         {
             var message = addRequest.Error != null ? addRequest.Error.message : "Unknown Package Manager error.";
-            EditorUtility.DisplayDialog("VLiveKitInstaller", "Failed to install VLiveKitInstaller.\n\n" + message, "OK");
-            Debug.LogError("Failed to install VLiveKitInstaller: " + message);
+            Debug.Log("VLiveKitPackageManager could not install yet. " + message);
+            BootstrapPromptWindow.Open(PromptPrefsKeyPrefix + Application.dataPath, !ProjectHasGitMetadata(), Install);
         }
 
         addRequest = null;
@@ -108,7 +91,7 @@ internal static class VLiveKitInstallerBootstrap
 
     private static void OpenInstallerIfAvailable()
     {
-        EditorApplication.ExecuteMenuItem("toshi/VLiveKit Installer");
+        EditorApplication.ExecuteMenuItem("toshi/VLiveKit Package Manager");
     }
 
     private static void EnsureScopedRegistry()
@@ -188,6 +171,72 @@ internal static class VLiveKitInstallerBootstrap
     private static string ProjectPath(string projectRelativePath)
     {
         return Path.GetFullPath(Path.Combine(Application.dataPath, "..", projectRelativePath));
+    }
+
+    private sealed class BootstrapPromptWindow : EditorWindow
+    {
+        private string prefsKey;
+        private bool showBackupTip;
+        private Action installAction;
+
+        public static void Open(string prefsKey, bool showBackupTip, Action installAction)
+        {
+            var window = GetWindow<BootstrapPromptWindow>(true, "VLiveKitPackageManager");
+            window.prefsKey = prefsKey;
+            window.showBackupTip = showBackupTip;
+            window.installAction = installAction;
+            window.minSize = new Vector2(430f, 190f);
+            window.maxSize = new Vector2(430f, 190f);
+            window.ShowUtility();
+        }
+
+        private void OnGUI()
+        {
+            GUILayout.Space(12f);
+            GUILayout.Label("Set up VLiveKitPackageManager", EditorStyles.boldLabel);
+            GUILayout.Space(6f);
+            EditorGUILayout.LabelField("This adds the com.toshi scoped registry and installs only the installer package.", EditorStyles.wordWrappedLabel);
+            EditorGUILayout.LabelField("After that, you can choose packages and samples from one small window.", EditorStyles.wordWrappedLabel);
+
+            if (showBackupTip)
+            {
+                GUILayout.Space(8f);
+                var rect = GUILayoutUtility.GetRect(0f, 34f, GUILayout.ExpandWidth(true));
+                EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.08f, 0.22f, 0.13f) : new Color(0.84f, 0.96f, 0.88f));
+                GUI.Label(
+                    rect,
+                    "Good to go. Keeping a project backup is a nice safety net if this project is not tracked with Git.",
+                    new GUIStyle(EditorStyles.wordWrappedLabel)
+                    {
+                        padding = new RectOffset(10, 10, 7, 7),
+                        normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.82f, 0.96f, 0.86f) : new Color(0.05f, 0.28f, 0.14f) }
+                    });
+            }
+
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("Set Up", GUILayout.Height(28f)))
+            {
+                EditorPrefs.SetBool(prefsKey, true);
+                Close();
+                installAction?.Invoke();
+            }
+
+            if (GUILayout.Button("Not Now", GUILayout.Height(28f)))
+            {
+                EditorPrefs.SetBool(prefsKey, true);
+                Close();
+            }
+
+            if (GUILayout.Button("Don't Ask Again", GUILayout.Height(28f)))
+            {
+                EditorPrefs.SetBool(prefsKey, true);
+                Close();
+            }
+
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(8f);
+        }
     }
 }
 #endif

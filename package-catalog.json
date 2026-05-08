@@ -2,7 +2,7 @@
   "packages": [
     {
       "name": "com.toshi.vlivekit",
-      "displayName": "VLiveKitInstaller",
+      "displayName": "VLiveKit Package Manager",
       "packageFolderPath": "Packages/VLiveKit",
       "assetFolderPath": "Packages/VLiveKit",
       "repositoryUrl": "https://github.com/toshi-kundesu/VLiveKit",

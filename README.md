@@ -1,6 +1,6 @@
-# VLiveKitInstaller
+# VLiveKit Package Manager
 
-VLiveKitInstaller is a small Unity Editor package for installing and updating VLiveKit packages.
+VLiveKit Package Manager is a small Unity Editor package for installing and updating VLiveKit packages.
 
 This package does not depend on the individual VLiveKit packages. It adds an installer menu that checks the current project and installs missing VLiveKit packages when you choose to do so.
 
@@ -8,7 +8,7 @@ This package does not depend on the individual VLiveKit packages. It adds an ins
 
 After the package is imported, open:
 
-`toshi > VLiveKit Installer`
+`toshi > VLiveKit Package Manager`
 
 The legacy menu is also available at:
 
@@ -33,24 +33,26 @@ The exporter can copy or write Unity Console errors to `Logs/VLiveKitConsoleLogs
 
 ## Package
 
-- Display name: `VLiveKitInstaller`
+- Display name: `VLiveKit Package Manager`
 - Package ID: `com.toshi.vlivekit`
 - Unity: `2022.3`
 - Repository: https://github.com/toshi-kundesu/VLiveKit
 
 ## Install
 
-### Bootstrap script
+### Bootstrap unitypackage
 
-Copy `Documentation~/VLiveKitInstallerBootstrap.cs` to `Assets/Editor/VLiveKitInstallerBootstrap.cs`, then return to Unity.
+Import `VLiveKitPackageManagerBootstrap.unitypackage` into the Unity project.
 
-Unity shows a `VLiveKitInstaller` prompt. Choose `Install` to add the `com.toshi` scoped registry and install `com.toshi.vlivekit` with Unity Package Manager.
+Unity adds a bootstrap script under `Assets/VLiveKitPackageManagerBootstrap/Editor/` and shows a `VLiveKitPackageManager` prompt. Choose `Set Up` to add the `com.toshi` scoped registry and install `com.toshi.vlivekit` with Unity Package Manager.
+
+Unity may show a `Missing Signature` notice for scoped registry packages. This is expected for packages installed from the npm scoped registry.
 
 If the project is not managed with Git, make a project backup before installing packages.
 
 After installation, open:
 
-`toshi > VLiveKit Installer`
+`toshi > VLiveKit Package Manager`
 
 ### Manual manifest setup
 
@@ -76,7 +78,7 @@ Configure the scoped registry in `Packages/manifest.json`.
     }
   ],
   "dependencies": {
-    "com.toshi.vlivekit": "0.1.21"
+    "com.toshi.vlivekit": "0.1.23"
   }
 }
 ```

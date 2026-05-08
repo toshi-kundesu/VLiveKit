@@ -71,13 +71,15 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private string activeRemoveDisplayName;
     private int operationTotalCount;
     private int operationCompletedCount;
+    private int operationFailedCount;
     private GUIStyle headerStyle;
     private GUIStyle cardStyle;
     private GUIStyle badgeStyle;
     private GUIStyle mutedStyle;
     private GUIStyle toolbarButtonStyle;
     private GUIStyle primaryButtonStyle;
-    private GUIStyle titleBadgeStyle;
+    private GUIStyle metricValueStyle;
+    private GUIStyle positiveNoticeStyle;
     private bool stylesReady;
     private string statusText = "Ready";
     private string catalogSource = "Bundled catalog";
@@ -92,13 +94,13 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private static void OpenWindow()
     {
         VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry();
-        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitInstaller");
+        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitPackageManager");
         window.minSize = new Vector2(900f, 520f);
         window.Show();
         window.Refresh();
     }
 
-    [MenuItem("toshi/VLiveKit Installer")]
+    [MenuItem("toshi/VLiveKit Package Manager")]
     private static void OpenInstallerShortcut()
     {
         OpenWindow();
@@ -114,7 +116,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private static void InstallMissingPackages()
     {
         VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry();
-        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitInstaller");
+        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitPackageManager");
         window.minSize = new Vector2(900f, 520f);
         window.Show();
         window.RefreshAndInstallMissing();
@@ -124,7 +126,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private static void InstallAllPackages()
     {
         VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry();
-        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitInstaller");
+        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitPackageManager");
         window.minSize = new Vector2(900f, 520f);
         window.Show();
         window.RefreshAndInstallAll();
@@ -150,21 +152,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             return;
         }
 
-        var result = EditorUtility.DisplayDialogComplex(
-            "VLiveKitInstaller",
-            "Open VLiveKitInstaller to choose VLiveKit packages to install or update?\n\nIf this Unity project is not managed with Git, make a project backup before installing packages.",
-            "Open",
-            "Later",
-            "Do Not Show Again");
-
-        if (result == 0)
-        {
-            OpenWindow();
-        }
-        else if (result == 2)
-        {
-            EditorPrefs.SetBool(key, true);
-        }
+        FirstRunPromptWindow.Open(key, !ProjectHasGitMetadata(), OpenWindow);
     }
 
     private void OnEnable()
@@ -333,10 +321,18 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
         else
         {
-            var errorMessage = listRequest.Error != null ? listRequest.Error.message : "Unknown Package Manager error.";
-            Debug.LogWarning("VLiveKit package check failed. Falling back to manifest and local folders. " + errorMessage);
+            var errorMessage = GetPackageManagerErrorMessage(listRequest.Error);
             ApplyPackageCollection(null);
-            statusText = "Package Manager check failed; using fallback checks.";
+            statusText = "Using manifest and local folder checks. Package Manager did not answer this time.";
+            foreach (var row in rows)
+            {
+                if (string.IsNullOrEmpty(row.Message))
+                {
+                    row.Message = "Checked with project files. Refresh again if Unity Package Manager is still loading.";
+                }
+            }
+
+            Debug.Log("VLiveKitPackageManager used project-file fallback checks. " + errorMessage);
         }
 
         listRequest = null;
@@ -396,7 +392,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
 
         var completedRow = activeOperation ?? FindRowByPackageId(activePackageId);
-        var displayName = !string.IsNullOrEmpty(activeDisplayName) ? activeDisplayName : activePackageId;
+        var displayName = !string.IsNullOrEmpty(activeDisplayName) ? activeDisplayName : (!string.IsNullOrEmpty(activePackageId) ? activePackageId : "the package");
         operationCompletedCount++;
 
         if (addRequest.Status == StatusCode.Success)
@@ -412,14 +408,15 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
         else
         {
-            var errorMessage = addRequest.Error != null ? addRequest.Error.message : "Unknown Package Manager error.";
+            operationFailedCount++;
+            var errorMessage = GetPackageManagerErrorMessage(addRequest.Error);
             if (completedRow != null)
             {
-                completedRow.Message = errorMessage;
+                completedRow.Message = "Could not install/update. " + errorMessage;
             }
 
-            statusText = "Failed: " + displayName;
-            Debug.LogError("Failed to install/update " + displayName + ": " + errorMessage);
+            statusText = "Could not install/update " + displayName;
+            Debug.Log("VLiveKitPackageManager could not install/update " + displayName + ". " + errorMessage);
         }
 
         addRequest = null;
@@ -438,7 +435,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
 
         var completedRow = activeRemoveOperation ?? FindRowByPackageId(activeRemovePackageId);
-        var displayName = !string.IsNullOrEmpty(activeRemoveDisplayName) ? activeRemoveDisplayName : activeRemovePackageId;
+        var displayName = !string.IsNullOrEmpty(activeRemoveDisplayName) ? activeRemoveDisplayName : (!string.IsNullOrEmpty(activeRemovePackageId) ? activeRemovePackageId : "the package");
 
         if (removeRequest.Status == StatusCode.Success)
         {
@@ -453,14 +450,14 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
         else
         {
-            var errorMessage = removeRequest.Error != null ? removeRequest.Error.message : "Unknown Package Manager error.";
+            var errorMessage = GetPackageManagerErrorMessage(removeRequest.Error);
             if (completedRow != null)
             {
-                completedRow.Message = errorMessage;
+                completedRow.Message = "Could not uninstall. " + errorMessage;
             }
 
-            statusText = "Failed to uninstall: " + displayName;
-            Debug.LogError("Failed to uninstall " + displayName + ": " + errorMessage);
+            statusText = "Could not uninstall " + displayName;
+            Debug.Log("VLiveKitPackageManager could not uninstall " + displayName + ". " + errorMessage);
         }
 
         removeRequest = null;
@@ -571,6 +568,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
         operationTotalCount = pendingOperations.Count;
         operationCompletedCount = 0;
+        operationFailedCount = 0;
         StartNextOperation();
     }
 
@@ -579,6 +577,41 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         return row.Spec.PackageName != CatalogPackageName &&
             !IsBlockedInstallTarget(row.Spec) &&
             (row.State == InstallState.Missing || row.CanUpdate);
+    }
+
+    private static void LogOperationFinished(int completed, int failed)
+    {
+        if (completed <= 0)
+        {
+            return;
+        }
+
+        if (failed == 0)
+        {
+            var packageText = completed == 1 ? "package" : "packages";
+            Debug.Log("VLiveKit finished installing/updating " + completed + " " + packageText + ".");
+            return;
+        }
+
+        var succeeded = Mathf.Max(0, completed - failed);
+        Debug.Log("VLiveKit completed " + succeeded + " operation(s). " + failed + " operation(s) need another Refresh after Unity finishes compiling or importing.");
+    }
+
+    private static void ShowSoftNotice(string message)
+    {
+        Debug.Log(message);
+        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitPackageManager");
+        window.ShowNotification(new GUIContent(message));
+    }
+
+    private static string GetPackageManagerErrorMessage(Error error)
+    {
+        if (error != null && !string.IsNullOrEmpty(error.message))
+        {
+            return error.message;
+        }
+
+        return "Unity Package Manager did not return details. It may still be resolving, compiling, or importing assets.";
     }
 
     private void StartNextOperation()
@@ -590,9 +623,13 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
         if (pendingOperations.Count == 0)
         {
+            var completed = operationCompletedCount;
+            var failed = operationFailedCount;
             EditorUtility.ClearProgressBar();
             operationTotalCount = 0;
             operationCompletedCount = 0;
+            operationFailedCount = 0;
+            LogOperationFinished(completed, failed);
             Refresh();
             return;
         }
@@ -614,7 +651,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             statusText = "Updated scoped registries. " + statusText;
         }
 
-        EditorUtility.DisplayProgressBar("VLiveKitInstaller", statusText, GetOperationProgress());
+        EditorUtility.DisplayProgressBar("VLiveKitPackageManager", statusText, GetOperationProgress());
         addRequest = Client.Add(packageId);
     }
 
@@ -639,7 +676,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         activeRemoveDisplayName = row.Spec.DisplayName;
         row.Message = "Uninstalling " + row.Spec.PackageName;
         statusText = "Uninstalling " + row.Spec.DisplayName;
-        EditorUtility.DisplayProgressBar("VLiveKitInstaller", statusText, 0.5f);
+        EditorUtility.DisplayProgressBar("VLiveKitPackageManager", statusText, 0.5f);
         removeRequest = Client.Remove(row.Spec.PackageName);
     }
 
@@ -662,23 +699,24 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             mutedStyle != null &&
             toolbarButtonStyle != null &&
             primaryButtonStyle != null &&
-            titleBadgeStyle != null)
+            metricValueStyle != null &&
+            positiveNoticeStyle != null)
         {
             return;
         }
 
         headerStyle = new GUIStyle(EditorStyles.boldLabel)
         {
-            fontSize = 18,
-            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.91f, 0.93f, 0.94f) : new Color(0.10f, 0.12f, 0.13f) }
+            fontSize = 19,
+            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.88f, 0.97f, 0.91f) : new Color(0.05f, 0.18f, 0.10f) }
         };
         cardStyle = new GUIStyle(EditorStyles.helpBox)
         {
-            padding = new RectOffset(10, 10, 8, 8),
-            margin = new RectOffset(6, 6, 4, 4),
+            padding = new RectOffset(12, 12, 9, 9),
+            margin = new RectOffset(6, 6, 5, 5),
             normal =
             {
-                background = MakeSolidTexture(EditorGUIUtility.isProSkin ? new Color(0.155f, 0.155f, 0.155f) : new Color(0.88f, 0.89f, 0.90f))
+                background = MakeSolidTexture(EditorGUIUtility.isProSkin ? new Color(0.135f, 0.152f, 0.142f) : new Color(0.94f, 0.97f, 0.945f))
             }
         };
         badgeStyle = new GUIStyle(EditorStyles.boldLabel)
@@ -686,7 +724,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             alignment = TextAnchor.MiddleCenter,
             fontSize = 10,
             padding = new RectOffset(8, 8, 2, 2),
-            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.08f, 0.09f, 0.10f) : Color.white }
+            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.86f, 0.98f, 0.88f) : new Color(0.05f, 0.24f, 0.11f) }
         };
         mutedStyle = new GUIStyle(EditorStyles.label)
         {
@@ -705,12 +743,16 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             fixedHeight = 28,
             normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.92f, 0.94f, 0.95f) : new Color(0.12f, 0.13f, 0.14f) }
         };
-        titleBadgeStyle = new GUIStyle(EditorStyles.boldLabel)
+        metricValueStyle = new GUIStyle(EditorStyles.boldLabel)
         {
+            fontSize = 16,
             alignment = TextAnchor.MiddleCenter,
-            fontSize = 10,
-            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.86f, 0.91f, 1f) : new Color(0.05f, 0.10f, 0.18f) },
-            padding = new RectOffset(8, 8, 2, 2)
+            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.90f, 0.92f, 0.93f) : new Color(0.13f, 0.14f, 0.15f) }
+        };
+        positiveNoticeStyle = new GUIStyle(EditorStyles.wordWrappedLabel)
+        {
+            padding = new RectOffset(12, 12, 7, 7),
+            normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.82f, 0.96f, 0.86f) : new Color(0.05f, 0.28f, 0.14f) }
         };
         stylesReady = true;
     }
@@ -718,27 +760,23 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private void DrawHeader()
     {
         var rect = GUILayoutUtility.GetRect(0f, 82f, GUILayout.ExpandWidth(true));
-        EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.105f, 0.105f, 0.105f) : new Color(0.92f, 0.93f, 0.94f));
-        EditorGUI.DrawRect(new Rect(rect.x, rect.y + rect.height - 1f, rect.width, 1f), AccentColor(0.80f));
+        EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.075f, 0.105f, 0.085f) : new Color(0.91f, 0.97f, 0.92f));
+        EditorGUI.DrawRect(new Rect(rect.x, rect.y + rect.height - 1f, rect.width, 1f), AccentColor(0.35f));
 
         var titleRect = new Rect(rect.x + 16f, rect.y + 12f, rect.width - 320f, 24f);
-        GUI.Label(titleRect, "VLiveKitInstaller", headerStyle);
+        GUI.Label(titleRect, "VLiveKitPackageManager", headerStyle);
 
         var subtitleRect = new Rect(rect.x + 16f, rect.y + 39f, rect.width - 330f, 18f);
-        GUI.Label(subtitleRect, "Check versions, update packages, and jump to repositories or docs.", mutedStyle);
+        GUI.Label(subtitleRect, "Choose what to add. Local packages stay untouched.", mutedStyle);
 
-        var badgeRect = new Rect(rect.x + 16f, rect.y + 58f, 100f, 18f);
-        EditorGUI.DrawRect(badgeRect, AccentColor(0.22f));
-        GUI.Label(badgeRect, "PACKAGE", titleBadgeStyle);
-
-        var updateAllRect = new Rect(rect.xMax - 266f, rect.y + 14f, 120f, 28f);
+        var updateAllRect = new Rect(rect.xMax - 242f, rect.y + 14f, 108f, 28f);
         GUI.enabled = !isChecking && addRequest == null && removeRequest == null;
-        if (GUI.Button(updateAllRect, "Update All", primaryButtonStyle))
+        if (GUI.Button(updateAllRect, "Update", primaryButtonStyle))
         {
             QueueRows(row => row.CanUpdate);
         }
 
-        var refreshRect = new Rect(rect.xMax - 138f, rect.y + 14f, 120f, 28f);
+        var refreshRect = new Rect(rect.xMax - 126f, rect.y + 14f, 108f, 28f);
         GUI.enabled = !isChecking && addRequest == null && removeRequest == null;
         if (GUI.Button(refreshRect, "Refresh", primaryButtonStyle))
         {
@@ -747,13 +785,13 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
         GUI.enabled = true;
 
-        var statusRect = new Rect(rect.xMax - 424f, rect.y + 49f, 406f, 18f);
+        var statusRect = new Rect(rect.xMax - 424f, rect.y + 51f, 406f, 18f);
         GUI.Label(statusRect, catalogSource + " - " + statusText, new GUIStyle(mutedStyle) { alignment = TextAnchor.MiddleRight });
     }
 
     private static Color AccentColor(float alpha)
     {
-        return new Color(0.08f, 0.38f, 0.86f, alpha);
+        return new Color(0.18f, 0.62f, 0.32f, alpha);
     }
 
     private static Texture2D MakeSolidTexture(Color color)
@@ -764,39 +802,34 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         return texture;
     }
 
-    private static void DrawAccentBar(Rect rect, float alpha)
-    {
-        EditorGUI.DrawRect(rect, AccentColor(alpha));
-    }
-
     private void DrawToolbar()
     {
-        EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+        EditorGUILayout.BeginHorizontal(cardStyle);
         GUI.enabled = !isChecking && addRequest == null && removeRequest == null;
-        if (GUILayout.Button("Install All", EditorStyles.toolbarButton, GUILayout.Width(82f)))
+        if (GUILayout.Button("Install All", primaryButtonStyle, GUILayout.Width(96f)))
         {
             QueueRows(IsInstallAllCandidate);
         }
 
-        if (GUILayout.Button("Install Missing", EditorStyles.toolbarButton, GUILayout.Width(110f)))
+        if (GUILayout.Button("Install Missing", toolbarButtonStyle, GUILayout.Width(118f)))
         {
             QueueRows(row => row.State == InstallState.Missing);
         }
 
-        if (GUILayout.Button("Logs", EditorStyles.toolbarButton, GUILayout.Width(64f)))
+        if (GUILayout.Button("Logs", toolbarButtonStyle, GUILayout.Width(72f)))
         {
             VLiveKitErrorLogExporter.OpenWindow();
         }
 
         GUI.enabled = GUI.enabled && IsLensFiltersInstalled();
-        if (GUILayout.Button("Recommended Settings", EditorStyles.toolbarButton, GUILayout.Width(140f)))
+        if (GUILayout.Button("Recommended Settings", toolbarButtonStyle, GUILayout.Width(148f)))
         {
             OpenRecommendedHDRPVolumeSettingsWindow();
         }
 
         GUI.enabled = true;
         GUILayout.FlexibleSpace();
-        GUILayout.Label("Use Update All or Refresh in the header.", mutedStyle);
+        GUILayout.Label("Samples import into Assets/Samples. Local folders are left as-is.", mutedStyle);
         EditorGUILayout.EndHorizontal();
 
         if (IsOperating)
@@ -815,9 +848,15 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             return;
         }
 
-        EditorGUILayout.HelpBox(
-            "This project does not appear to be managed with Git. Back up the project before installing or updating packages.",
-            MessageType.Warning);
+        DrawPositiveNotice("Ready when you are. If you are not using Git, keeping a project backup is a nice safety net before changing packages.");
+    }
+
+    private void DrawPositiveNotice(string message)
+    {
+        var rect = GUILayoutUtility.GetRect(0f, 34f, GUILayout.ExpandWidth(true));
+        var background = EditorGUIUtility.isProSkin ? new Color(0.08f, 0.22f, 0.13f) : new Color(0.84f, 0.96f, 0.88f);
+        EditorGUI.DrawRect(rect, background);
+        GUI.Label(rect, message, positiveNoticeStyle);
     }
 
     private void DrawSummary()
@@ -849,7 +888,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             }
         }
 
-        EditorGUILayout.BeginHorizontal(GUILayout.Height(58f));
+        EditorGUILayout.BeginHorizontal(GUILayout.Height(56f));
         DrawMetric("Installed", installed.ToString(), 0.90f);
         DrawMetric("Updates", updates.ToString(), updates > 0 ? 1f : 0.42f);
         DrawMetric("Missing", missing.ToString(), missing > 0 ? 1f : 0.42f);
@@ -859,11 +898,15 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private void DrawMetric(string label, string value, float accentAlpha)
     {
-        EditorGUILayout.BeginVertical(cardStyle, GUILayout.Height(52f));
-        var rect = GUILayoutUtility.GetRect(120f, 3f, GUILayout.ExpandWidth(true));
-        DrawAccentBar(rect, accentAlpha);
+        EditorGUILayout.BeginVertical(cardStyle, GUILayout.Height(50f));
         GUILayout.Space(2f);
-        GUILayout.Label(value, new GUIStyle(EditorStyles.boldLabel) { fontSize = 17, alignment = TextAnchor.MiddleCenter });
+        var valueStyle = new GUIStyle(metricValueStyle);
+        if (accentAlpha > 0.75f)
+        {
+            valueStyle.normal.textColor = AccentColor(EditorGUIUtility.isProSkin ? 0.95f : 1f);
+        }
+
+        GUILayout.Label(value, valueStyle);
         GUILayout.Label(label, new GUIStyle(mutedStyle) { alignment = TextAnchor.MiddleCenter });
         EditorGUILayout.EndVertical();
     }
@@ -881,9 +924,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private void DrawPackageRow(PackageRow row)
     {
         EditorGUILayout.BeginVertical(cardStyle);
-        var accentRect = GUILayoutUtility.GetRect(1f, 2f, GUILayout.ExpandWidth(true));
-        EditorGUI.DrawRect(accentRect, GetRowAccentColor(row));
-        GUILayout.Space(2f);
+        GUILayout.Space(3f);
         EditorGUILayout.BeginHorizontal();
 
         DrawStatusBadge(row);
@@ -957,7 +998,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private void DrawStatusBadge(PackageRow row)
     {
         var label = row.StatusLabel;
-        var rect = GUILayoutUtility.GetRect(96f, 24f, GUILayout.Width(96f), GUILayout.Height(24f));
+        var rect = GUILayoutUtility.GetRect(88f, 22f, GUILayout.Width(88f), GUILayout.Height(22f));
         EditorGUI.DrawRect(rect, GetRowAccentColor(row));
         GUI.Label(rect, label, badgeStyle);
     }
@@ -966,20 +1007,20 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     {
         if (row.CanUpdate)
         {
-            return AccentColor(1f);
+            return AccentColor(0.42f);
         }
 
         if (row.State == InstallState.Missing)
         {
-            return AccentColor(0.95f);
+            return AccentColor(0.18f);
         }
 
         if (row.IsLocal)
         {
-            return AccentColor(0.58f);
+            return AccentColor(0.12f);
         }
 
-        return AccentColor(0.72f);
+        return AccentColor(0.24f);
     }
 
     private void DrawVersionBlock(string label, string value)
@@ -1005,14 +1046,19 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
         if (string.IsNullOrEmpty(version))
         {
-            EditorUtility.DisplayDialog("VLiveKit Samples", "Package version could not be resolved.", "OK");
+            ShowSoftNotice("Package version could not be resolved.");
             return;
         }
 
         var samples = new List<Sample>(Sample.FindByPackage(row.Spec.PackageName, version));
         if (samples.Count == 0)
         {
-            EditorUtility.DisplayDialog("VLiveKit Samples", "No samples were found for " + row.Spec.DisplayName + ".", "OK");
+            if (ImportLocalSamples(row, version))
+            {
+                return;
+            }
+
+            ShowSoftNotice("No Samples~ or Sample folder was found for " + row.Spec.DisplayName + ".");
             return;
         }
 
@@ -1026,10 +1072,106 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
 
         AssetDatabase.Refresh();
-        EditorUtility.DisplayDialog(
-            "VLiveKit Samples",
-            "Imported " + imported + " sample(s) for " + row.Spec.DisplayName + ".",
-            "OK");
+        ShowSoftNotice("Imported " + imported + " sample(s) for " + row.Spec.DisplayName + ".");
+    }
+
+    private static bool ImportLocalSamples(PackageRow row, string version)
+    {
+        var packageJsonPath = FindLocalPackageJson(row.Spec);
+        if (string.IsNullOrEmpty(packageJsonPath))
+        {
+            return false;
+        }
+
+        var packageRoot = Path.GetDirectoryName(packageJsonPath);
+        if (string.IsNullOrEmpty(packageRoot))
+        {
+            return false;
+        }
+
+        var imported = 0;
+        var samplesRoot = Path.Combine(packageRoot, "Samples~");
+        if (Directory.Exists(samplesRoot))
+        {
+            imported += ImportSamplesRoot(row.Spec.DisplayName, version, samplesRoot);
+        }
+
+        var visibleSampleRoot = Path.Combine(packageRoot, "Sample");
+        if (Directory.Exists(visibleSampleRoot))
+        {
+            imported += CopySampleFolder(row.Spec.DisplayName, version, visibleSampleRoot, "Sample");
+        }
+
+        if (imported == 0)
+        {
+            return false;
+        }
+
+        AssetDatabase.Refresh();
+        ShowSoftNotice("Imported " + imported + " local sample folder(s) for " + row.Spec.DisplayName + ".");
+        return true;
+    }
+
+    private static int ImportSamplesRoot(string displayName, string version, string sampleRoot)
+    {
+        var folders = Directory.GetDirectories(sampleRoot);
+        if (folders.Length == 0)
+        {
+            return CopySampleFolder(displayName, version, sampleRoot, Path.GetFileName(sampleRoot));
+        }
+
+        var imported = 0;
+        foreach (var folder in folders)
+        {
+            imported += CopySampleFolder(displayName, version, folder, Path.GetFileName(folder));
+        }
+
+        return imported;
+    }
+
+    private static int CopySampleFolder(string displayName, string version, string sourceFolder, string sampleName)
+    {
+        if (string.IsNullOrEmpty(sampleName))
+        {
+            sampleName = "Sample";
+        }
+
+        var destination = ToProjectPath("Assets/Samples/" + SanitizePathPart(displayName) + "/" + version + "/" + SanitizePathPart(sampleName));
+        if (Directory.Exists(destination))
+        {
+            var overwrite = EditorUtility.DisplayDialog(
+                "VLiveKit Samples",
+                "Replace existing sample?\n\n" + destination,
+                "Replace",
+                "Skip");
+            if (!overwrite)
+            {
+                return 0;
+            }
+
+            FileUtil.DeleteFileOrDirectory(destination);
+            FileUtil.DeleteFileOrDirectory(destination + ".meta");
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(destination));
+        FileUtil.CopyFileOrDirectory(sourceFolder, destination);
+        return 1;
+    }
+
+    private static string SanitizePathPart(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return "Sample";
+        }
+
+        foreach (var invalidChar in Path.GetInvalidFileNameChars())
+        {
+            value = value.Replace(invalidChar, '_');
+        }
+
+        value = value.Trim();
+        return string.IsNullOrEmpty(value) ? "Sample" : value;
     }
 
     private static void OpenRecommendedHDRPVolumeSettingsWindow()
@@ -1043,20 +1185,14 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     {
         if (!IsLensFiltersInstalledInProject())
         {
-            EditorUtility.DisplayDialog(
-                "VLiveKit HDRP Volume Settings",
-                "VLive Lens Filters is not installed. Install it first, then apply the recommended HDRP Volume settings.",
-                "OK");
+            ShowSoftNotice("VLive Lens Filters is not installed. Install it first, then apply the recommended HDRP Volume settings.");
             return;
         }
 
         var settingsAsset = GetHDRPGlobalSettingsAsset();
         if (settingsAsset == null)
         {
-            EditorUtility.DisplayDialog(
-                "VLiveKit HDRP Volume Settings",
-                "HDRP Global Settings asset was not found. Open Project Settings > Graphics once, then try again.",
-                "OK");
+            ShowSoftNotice("HDRP Global Settings asset was not found. Open Project Settings > Graphics once, then try again.");
             return;
         }
 
@@ -1066,10 +1202,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
         if (beforeTypes.Count == 0 && afterTypes.Count == 0)
         {
-            EditorUtility.DisplayDialog(
-                "VLiveKit HDRP Volume Settings",
-                "Recommended post process types were not found. Install VLive Lens Filters, then try again.",
-                "OK");
+            ShowSoftNotice("Recommended post process types were not found. Install VLive Lens Filters, then try again.");
             return;
         }
 
@@ -1096,7 +1229,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             message += "\n\nSkipped missing type(s):\n" + string.Join("\n", missingTypes);
         }
 
-        EditorUtility.DisplayDialog("VLiveKit HDRP Volume Settings", message, "OK");
+        ShowSoftNotice(message);
     }
 
     private bool IsLensFiltersInstalled()
@@ -1135,7 +1268,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             }
             catch (TargetInvocationException exception)
             {
-                Debug.LogWarning("Failed to ensure HDRP Global Settings asset. " + exception.InnerException?.Message);
+                Debug.Log("VLiveKitPackageManager could not ensure HDRP Global Settings asset. " + exception.InnerException?.Message);
                 return null;
             }
         }
@@ -1683,7 +1816,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         {
             return new PackageSpec(
                 CatalogPackageName,
-                "VLiveKitInstaller",
+                "VLiveKit Package Manager",
                 "Packages/VLiveKit",
                 "Packages/VLiveKit",
                 "https://github.com/toshi-kundesu/VLiveKit",
@@ -1801,6 +1934,71 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         {
             var dotIndex = postProcessType.TypeName.LastIndexOf('.');
             return dotIndex >= 0 ? postProcessType.TypeName.Substring(dotIndex + 1) : postProcessType.TypeName;
+        }
+    }
+
+    private sealed class FirstRunPromptWindow : EditorWindow
+    {
+        private string prefsKey;
+        private bool showBackupTip;
+        private Action openAction;
+
+        public static void Open(string prefsKey, bool showBackupTip, Action openAction)
+        {
+            var window = GetWindow<FirstRunPromptWindow>(true, "VLiveKit");
+            window.prefsKey = prefsKey;
+            window.showBackupTip = showBackupTip;
+            window.openAction = openAction;
+            window.minSize = new Vector2(430f, 170f);
+            window.maxSize = new Vector2(430f, 170f);
+            window.ShowUtility();
+        }
+
+        private void OnGUI()
+        {
+            GUILayout.Space(12f);
+            GUILayout.Label("VLiveKit Package Manager is ready", EditorStyles.boldLabel);
+            GUILayout.Space(6f);
+            EditorGUILayout.LabelField("Open it when you want to choose packages, import samples, or check updates.", EditorStyles.wordWrappedLabel);
+
+            if (showBackupTip)
+            {
+                GUILayout.Space(8f);
+                var rect = GUILayoutUtility.GetRect(0f, 34f, GUILayout.ExpandWidth(true));
+                EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.08f, 0.22f, 0.13f) : new Color(0.84f, 0.96f, 0.88f));
+                GUI.Label(
+                    rect,
+                    "Good to go. Keeping a project backup is a nice safety net if this project is not tracked with Git.",
+                    new GUIStyle(EditorStyles.wordWrappedLabel)
+                    {
+                        padding = new RectOffset(10, 10, 7, 7),
+                        normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.82f, 0.96f, 0.86f) : new Color(0.05f, 0.28f, 0.14f) }
+                    });
+            }
+
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("Open", GUILayout.Height(28f)))
+            {
+                EditorPrefs.SetBool(prefsKey, true);
+                Close();
+                openAction?.Invoke();
+            }
+
+            if (GUILayout.Button("Not Now", GUILayout.Height(28f)))
+            {
+                EditorPrefs.SetBool(prefsKey, true);
+                Close();
+            }
+
+            if (GUILayout.Button("Don't Ask Again", GUILayout.Height(28f)))
+            {
+                EditorPrefs.SetBool(prefsKey, true);
+                Close();
+            }
+
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(8f);
         }
     }
 

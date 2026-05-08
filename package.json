@@ -1,7 +1,7 @@
 ﻿{
     "name":  "com.toshi.vlivekit",
-    "displayName":  "VLiveKitInstaller",
-    "version":  "0.1.22",
+    "displayName":  "VLiveKit Package Manager",
+    "version":  "0.1.23",
     "unity":  "2022.3",
     "description":  "Unity Editor tools for installing VLiveKit packages and exporting console error logs.",
     "author":  {
@@ -16,6 +16,6 @@
                      "Unity",
                      "VLiveKit",
                      "Virtual Live",
-                     "Installer"
+                     "Package Manager"
                  ]
 }
