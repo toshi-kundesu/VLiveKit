@@ -1038,15 +1038,16 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             return;
         }
 
-        var version = row.InstalledVersion;
-        if (string.IsNullOrEmpty(version) || version == "manifest" || version == "local" || version == "assets")
-        {
-            version = ReadLocalPackageVersion(row.Spec);
-        }
+        var version = ResolveSamplePackageVersion(row);
 
         if (string.IsNullOrEmpty(version))
         {
-            ShowSoftNotice("Package version could not be resolved.");
+            if (ImportLocalSamples(row, "local"))
+            {
+                return;
+            }
+
+            ShowSoftNotice("Samples are not ready yet for " + row.Spec.DisplayName + ". Refresh after Unity finishes resolving packages.");
             return;
         }
 
@@ -1077,7 +1078,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private static bool ImportLocalSamples(PackageRow row, string version)
     {
-        var packageJsonPath = FindLocalPackageJson(row.Spec);
+        var packageJsonPath = FindInstalledPackageJson(row.Spec);
         if (string.IsNullOrEmpty(packageJsonPath))
         {
             return false;
@@ -1110,6 +1111,42 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         AssetDatabase.Refresh();
         ShowSoftNotice("Imported " + imported + " local sample folder(s) for " + row.Spec.DisplayName + ".");
         return true;
+    }
+
+    private static string ResolveSamplePackageVersion(PackageRow row)
+    {
+        var version = row.InstalledVersion;
+        if (!IsPlaceholderVersion(version))
+        {
+            return version;
+        }
+
+        var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForPackageName(row.Spec.PackageName);
+        if (packageInfo != null)
+        {
+            if (!IsPlaceholderVersion(packageInfo.version))
+            {
+                return packageInfo.version;
+            }
+
+            var packageJsonPath = Path.Combine(packageInfo.resolvedPath, "package.json");
+            version = ReadPackageJsonVersion(packageJsonPath);
+            if (!IsPlaceholderVersion(version))
+            {
+                return version;
+            }
+        }
+
+        version = ReadLocalPackageVersion(row.Spec);
+        return IsPlaceholderVersion(version) ? null : version;
+    }
+
+    private static bool IsPlaceholderVersion(string version)
+    {
+        return string.IsNullOrEmpty(version) ||
+            version == "manifest" ||
+            version == "local" ||
+            version == "assets";
     }
 
     private static int ImportSamplesRoot(string displayName, string version, string sampleRoot)
@@ -1741,6 +1778,11 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private static string ReadLocalPackageVersion(PackageSpec package)
     {
         var packageJsonPath = FindLocalPackageJson(package);
+        return ReadPackageJsonVersion(packageJsonPath);
+    }
+
+    private static string ReadPackageJsonVersion(string packageJsonPath)
+    {
         if (string.IsNullOrEmpty(packageJsonPath) || !File.Exists(packageJsonPath))
         {
             return null;
@@ -1782,6 +1824,21 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
 
         return null;
+    }
+
+    private static string FindInstalledPackageJson(PackageSpec package)
+    {
+        var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForPackageName(package.PackageName);
+        if (packageInfo != null && !string.IsNullOrEmpty(packageInfo.resolvedPath))
+        {
+            var packageJsonPath = Path.Combine(packageInfo.resolvedPath, "package.json");
+            if (File.Exists(packageJsonPath))
+            {
+                return packageJsonPath;
+            }
+        }
+
+        return FindLocalPackageJson(package);
     }
 
     private static string ToProjectPath(string unityRelativePath)
