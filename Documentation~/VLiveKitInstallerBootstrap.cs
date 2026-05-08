@@ -202,7 +202,7 @@ internal static class VLiveKitInstallerBootstrap
             {
                 GUILayout.Space(8f);
                 var rect = GUILayoutUtility.GetRect(0f, 34f, GUILayout.ExpandWidth(true));
-                EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.185f, 0.185f, 0.185f) : new Color(0.935f, 0.935f, 0.922f));
+                EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.185f, 0.185f, 0.185f) : new Color(0.935f, 0.935f, 0.935f));
                 EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - 1f, rect.width, 1f), EditorGUIUtility.isProSkin ? new Color(1f, 1f, 1f, 0.09f) : new Color(0f, 0f, 0f, 0.11f));
                 GUI.Label(
                     rect,
@@ -210,7 +210,7 @@ internal static class VLiveKitInstallerBootstrap
                     new GUIStyle(EditorStyles.wordWrappedLabel)
                     {
                         padding = new RectOffset(10, 10, 7, 7),
-                        normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.92f, 0.92f, 0.90f) : new Color(0.12f, 0.12f, 0.11f) }
+                        normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.92f, 0.92f, 0.92f) : new Color(0.12f, 0.12f, 0.12f) }
                     });
             }
 

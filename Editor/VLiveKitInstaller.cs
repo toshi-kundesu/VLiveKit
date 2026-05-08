@@ -80,6 +80,8 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private GUIStyle primaryButtonStyle;
     private GUIStyle metricValueStyle;
     private GUIStyle positiveNoticeStyle;
+    private GUIStyle rowTitleStyle;
+    private GUIStyle tableHeaderStyle;
     private bool stylesReady;
     private string statusText = "Ready";
     private string catalogSource = "Bundled catalog";
@@ -700,7 +702,9 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             toolbarButtonStyle != null &&
             primaryButtonStyle != null &&
             metricValueStyle != null &&
-            positiveNoticeStyle != null)
+            positiveNoticeStyle != null &&
+            rowTitleStyle != null &&
+            tableHeaderStyle != null)
         {
             return;
         }
@@ -745,14 +749,22 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         };
         metricValueStyle = new GUIStyle(EditorStyles.boldLabel)
         {
-            fontSize = 16,
-            alignment = TextAnchor.MiddleCenter,
+            fontSize = 12,
+            alignment = TextAnchor.MiddleLeft,
             normal = { textColor = PrimaryTextColor() }
         };
         positiveNoticeStyle = new GUIStyle(EditorStyles.wordWrappedLabel)
         {
             padding = new RectOffset(12, 12, 7, 7),
             normal = { textColor = PrimaryTextColor() }
+        };
+        rowTitleStyle = new GUIStyle(EditorStyles.boldLabel)
+        {
+            normal = { textColor = PrimaryTextColor() }
+        };
+        tableHeaderStyle = new GUIStyle(EditorStyles.miniBoldLabel)
+        {
+            normal = { textColor = SecondaryTextColor() }
         };
         stylesReady = true;
     }
@@ -796,17 +808,17 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private static Color SurfaceColor()
     {
-        return EditorGUIUtility.isProSkin ? new Color(0.118f, 0.118f, 0.118f) : new Color(0.965f, 0.965f, 0.955f);
+        return EditorGUIUtility.isProSkin ? new Color(0.118f, 0.118f, 0.118f) : new Color(0.965f, 0.965f, 0.965f);
     }
 
     private static Color PanelColor()
     {
-        return EditorGUIUtility.isProSkin ? new Color(0.158f, 0.158f, 0.158f) : new Color(0.992f, 0.992f, 0.985f);
+        return EditorGUIUtility.isProSkin ? new Color(0.158f, 0.158f, 0.158f) : new Color(0.992f, 0.992f, 0.992f);
     }
 
     private static Color SubtlePanelColor()
     {
-        return EditorGUIUtility.isProSkin ? new Color(0.185f, 0.185f, 0.185f) : new Color(0.935f, 0.935f, 0.922f);
+        return EditorGUIUtility.isProSkin ? new Color(0.185f, 0.185f, 0.185f) : new Color(0.935f, 0.935f, 0.935f);
     }
 
     private static Color SeparatorColor()
@@ -816,12 +828,12 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private static Color PrimaryTextColor()
     {
-        return EditorGUIUtility.isProSkin ? new Color(0.92f, 0.92f, 0.90f) : new Color(0.12f, 0.12f, 0.11f);
+        return EditorGUIUtility.isProSkin ? new Color(0.92f, 0.92f, 0.92f) : new Color(0.12f, 0.12f, 0.12f);
     }
 
     private static Color SecondaryTextColor()
     {
-        return EditorGUIUtility.isProSkin ? new Color(0.62f, 0.62f, 0.60f) : new Color(0.42f, 0.42f, 0.39f);
+        return EditorGUIUtility.isProSkin ? new Color(0.62f, 0.62f, 0.62f) : new Color(0.42f, 0.42f, 0.42f);
     }
 
     private static Texture2D MakeSolidTexture(Color color)
@@ -887,7 +899,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             return;
         }
 
-        DrawPositiveNotice("Ready when you are. If you are not using Git, keeping a project backup is a nice safety net before changing packages.");
+        DrawPositiveNotice("If this project is not tracked with Git, make a project backup before installing or updating packages.");
     }
 
     private void DrawPositiveNotice(string message)
@@ -927,12 +939,15 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             }
         }
 
-        EditorGUILayout.BeginHorizontal(GUILayout.Height(56f));
-        DrawMetric("Installed", installed.ToString(), 0.90f);
-        DrawMetric("Updates", updates.ToString(), updates > 0 ? 1f : 0.42f);
-        DrawMetric("Missing", missing.ToString(), missing > 0 ? 1f : 0.42f);
-        DrawMetric("Local", local.ToString(), local > 0 ? 0.78f : 0.42f);
+        EditorGUILayout.BeginHorizontal(GUILayout.Height(30f));
+        GUILayout.Space(12f);
+        GUILayout.Label("Installed " + installed, metricValueStyle, GUILayout.Width(118f));
+        GUILayout.Label("Updates " + updates, metricValueStyle, GUILayout.Width(118f));
+        GUILayout.Label("Missing " + missing, metricValueStyle, GUILayout.Width(118f));
+        GUILayout.Label("Local " + local, metricValueStyle, GUILayout.Width(118f));
+        GUILayout.FlexibleSpace();
         EditorGUILayout.EndHorizontal();
+        DrawSeparator(2f, 6f);
     }
 
     private void DrawMetric(string label, string value, float accentAlpha)
@@ -953,6 +968,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private void DrawPackageList()
     {
         scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
+        DrawTableHeader();
         foreach (var row in rows)
         {
             DrawPackageRow(row);
@@ -960,85 +976,96 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         EditorGUILayout.EndScrollView();
     }
 
+    private void DrawTableHeader()
+    {
+        var rect = GUILayoutUtility.GetRect(0f, 28f, GUILayout.ExpandWidth(true));
+        EditorGUI.DrawRect(rect, SurfaceColor());
+        EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - 1f, rect.width, 1f), SeparatorColor());
+
+        var actionsX = rect.xMax - 378f;
+        GUI.Label(new Rect(rect.x + 16f, rect.y + 7f, 90f, 16f), "Status", tableHeaderStyle);
+        GUI.Label(new Rect(rect.x + 112f, rect.y + 7f, actionsX - rect.x - 292f, 16f), "Package", tableHeaderStyle);
+        GUI.Label(new Rect(actionsX - 178f, rect.y + 7f, 80f, 16f), "Installed", tableHeaderStyle);
+        GUI.Label(new Rect(actionsX - 88f, rect.y + 7f, 74f, 16f), "Latest", tableHeaderStyle);
+        GUI.Label(new Rect(actionsX, rect.y + 7f, 360f, 16f), "Actions", tableHeaderStyle);
+    }
+
     private void DrawPackageRow(PackageRow row)
     {
-        var rowRect = EditorGUILayout.BeginVertical(cardStyle);
-        GUILayout.Space(3f);
-        EditorGUILayout.BeginHorizontal();
+        var hasMessage = !string.IsNullOrEmpty(row.Message);
+        var rect = GUILayoutUtility.GetRect(0f, hasMessage ? 76f : 58f, GUILayout.ExpandWidth(true));
+        EditorGUI.DrawRect(rect, PanelColor());
+        EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - 1f, rect.width, 1f), SeparatorColor());
 
-        DrawStatusBadge(row);
+        var actionsX = rect.xMax - 378f;
+        DrawStatusBadge(new Rect(rect.x + 16f, rect.y + 12f, 88f, 22f), row);
 
-        EditorGUILayout.BeginVertical();
-        GUILayout.Label(row.Spec.DisplayName, EditorStyles.boldLabel);
-        GUILayout.Label(row.Spec.PackageName, mutedStyle);
-        EditorGUILayout.EndVertical();
+        var packageWidth = Mathf.Max(180f, actionsX - rect.x - 296f);
+        GUI.Label(new Rect(rect.x + 112f, rect.y + 9f, packageWidth, 18f), row.Spec.DisplayName, rowTitleStyle);
+        GUI.Label(new Rect(rect.x + 112f, rect.y + 30f, packageWidth, 18f), row.Spec.PackageName, mutedStyle);
 
-        GUILayout.FlexibleSpace();
+        GUI.Label(new Rect(actionsX - 178f, rect.y + 13f, 80f, 18f), string.IsNullOrEmpty(row.InstalledVersion) ? "-" : row.InstalledVersion, EditorStyles.label);
+        GUI.Label(new Rect(actionsX - 88f, rect.y + 13f, 74f, 18f), row.LatestLabel, EditorStyles.label);
 
-        DrawVersionBlock("Installed", string.IsNullOrEmpty(row.InstalledVersion) ? "-" : row.InstalledVersion);
-        DrawVersionBlock("Latest", row.LatestLabel);
-
-        if (GUILayout.Button("GitHub", toolbarButtonStyle, GUILayout.Width(72f)))
+        if (DrawActionButton(new Rect(actionsX, rect.y + 11f, 62f, 24f), "GitHub", true))
         {
             Application.OpenURL(row.Spec.RepositoryUrl);
         }
 
-        if (GUILayout.Button("Docs", toolbarButtonStyle, GUILayout.Width(58f)))
+        if (DrawActionButton(new Rect(actionsX + 66f, rect.y + 11f, 54f, 24f), "Docs", true))
         {
             Application.OpenURL(row.Spec.DocumentationUrl);
         }
 
         var canImportSamples = row.Spec.PackageName != CatalogPackageName;
-        GUI.enabled = addRequest == null && removeRequest == null && !isChecking && row.State != InstallState.Missing && canImportSamples;
-        if (canImportSamples && GUILayout.Button("Samples", toolbarButtonStyle, GUILayout.Width(72f)))
+        if (DrawActionButton(new Rect(actionsX + 124f, rect.y + 11f, 72f, 24f), "Samples", addRequest == null && removeRequest == null && !isChecking && row.State != InstallState.Missing && canImportSamples))
         {
             ImportSamples(row);
         }
 
-        GUI.enabled = addRequest == null && removeRequest == null && !isChecking && row.CanInstallFromRegistry;
+        var canInstall = addRequest == null && removeRequest == null && !isChecking && row.CanInstallFromRegistry;
         if (row.State == InstallState.Missing)
         {
-            if (GUILayout.Button("Install", toolbarButtonStyle, GUILayout.Width(78f)))
+            if (DrawActionButton(new Rect(actionsX + 200f, rect.y + 11f, 76f, 24f), "Install", canInstall))
             {
                 QueueRows(candidate => candidate == row);
             }
         }
         else if (row.CanUpdate)
         {
-            if (GUILayout.Button("Update", toolbarButtonStyle, GUILayout.Width(78f)))
+            if (DrawActionButton(new Rect(actionsX + 200f, rect.y + 11f, 76f, 24f), "Update", canInstall))
             {
                 QueueRows(candidate => candidate == row);
             }
         }
         else
         {
-            GUI.enabled = false;
-            GUILayout.Button(row.IsLocal ? "Local" : "Current", toolbarButtonStyle, GUILayout.Width(78f));
+            DrawActionButton(new Rect(actionsX + 200f, rect.y + 11f, 76f, 24f), row.IsLocal ? "Local" : "Current", false);
         }
 
-        GUI.enabled = addRequest == null && removeRequest == null && !isChecking && row.CanUninstall;
-        if (GUILayout.Button("Uninstall", toolbarButtonStyle, GUILayout.Width(78f)))
+        if (DrawActionButton(new Rect(actionsX + 280f, rect.y + 11f, 78f, 24f), "Uninstall", addRequest == null && removeRequest == null && !isChecking && row.CanUninstall))
         {
             UninstallRow(row);
         }
 
-        GUI.enabled = true;
-        EditorGUILayout.EndHorizontal();
-
-        if (!string.IsNullOrEmpty(row.Message))
+        if (hasMessage)
         {
-            GUILayout.Space(3f);
-            GUILayout.Label(row.Message, mutedStyle);
+            GUI.Label(new Rect(rect.x + 112f, rect.y + 51f, rect.width - 136f, 18f), row.Message, mutedStyle);
         }
-
-        EditorGUILayout.EndVertical();
-        EditorGUI.DrawRect(new Rect(rowRect.x + 12f, rowRect.yMax - 1f, rowRect.width - 24f, 1f), SeparatorColor());
     }
 
-    private void DrawStatusBadge(PackageRow row)
+    private bool DrawActionButton(Rect rect, string label, bool enabled)
+    {
+        var wasEnabled = GUI.enabled;
+        GUI.enabled = wasEnabled && enabled;
+        var clicked = GUI.Button(rect, label, toolbarButtonStyle);
+        GUI.enabled = wasEnabled;
+        return clicked;
+    }
+
+    private void DrawStatusBadge(Rect rect, PackageRow row)
     {
         var label = row.StatusLabel;
-        var rect = GUILayoutUtility.GetRect(88f, 22f, GUILayout.Width(88f), GUILayout.Height(22f));
         EditorGUI.DrawRect(rect, GetRowAccentColor(row));
         GUI.Label(rect, label, badgeStyle);
     }
@@ -2062,7 +2089,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             {
                 GUILayout.Space(8f);
                 var rect = GUILayoutUtility.GetRect(0f, 34f, GUILayout.ExpandWidth(true));
-                EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.185f, 0.185f, 0.185f) : new Color(0.935f, 0.935f, 0.922f));
+                EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.185f, 0.185f, 0.185f) : new Color(0.935f, 0.935f, 0.935f));
                 EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - 1f, rect.width, 1f), EditorGUIUtility.isProSkin ? new Color(1f, 1f, 1f, 0.09f) : new Color(0f, 0f, 0f, 0.11f));
                 GUI.Label(
                     rect,
@@ -2070,7 +2097,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
                     new GUIStyle(EditorStyles.wordWrappedLabel)
                     {
                         padding = new RectOffset(10, 10, 7, 7),
-                        normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.92f, 0.92f, 0.90f) : new Color(0.12f, 0.12f, 0.11f) }
+                        normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.92f, 0.92f, 0.92f) : new Color(0.12f, 0.12f, 0.12f) }
                     });
             }
 
