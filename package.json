@@ -1,9 +1,9 @@
 {
     "name":  "com.toshi.vlivekit",
     "displayName":  "VLiveKit Package Manager",
-    "version": "0.1.28",
+    "version": "0.1.29",
     "unity": "6000.3",
-    "description":  "Unity Editor tools for installing VLiveKit packages and exporting console error logs.",
+    "description":  "Unity Editor tools for installing VLiveKit packages and exporting console errors from Live Console.",
     "author":  {
                    "name":  "toshi"
                },
