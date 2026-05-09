@@ -108,7 +108,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         OpenWindow();
     }
 
-    [MenuItem("toshi/LensFilters/Recommended HDRP Volume Settings...")]
+    [MenuItem("toshi/VLiveKit/LensFilters/Recommended HDRP Volume Settings...")]
     private static void OpenRecommendedHDRPVolumeSettingsFromMenu()
     {
         OpenRecommendedHDRPVolumeSettingsWindow();
@@ -1293,7 +1293,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private static void OpenRecommendedHDRPVolumeSettingsWindow()
     {
         var window = GetWindow<RecommendedHDRPVolumeSettingsWindow>(true, "VLiveKit Recommended Settings");
-        window.minSize = new Vector2(420f, 500f);
+        window.minSize = new Vector2(500f, 500f);
         window.ShowUtility();
     }
 
@@ -1367,7 +1367,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             Directory.Exists(ToProjectPath("Assets/toshi.VLiveKit/LiveLensFilters"));
     }
 
-    private static UnityEngine.Object GetHDRPGlobalSettingsAsset()
+    private static UnityEngine.Object GetHDRPGlobalSettingsAsset(bool createIfMissing = true)
     {
         var settingsType = Type.GetType(HDRenderPipelineGlobalSettingsTypeName);
         if (settingsType == null)
@@ -1380,7 +1380,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         {
             try
             {
-                return ensureMethod.Invoke(null, new object[] { true }) as UnityEngine.Object;
+                return ensureMethod.Invoke(null, new object[] { createIfMissing }) as UnityEngine.Object;
             }
             catch (TargetInvocationException exception)
             {
@@ -1403,7 +1403,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
                 continue;
             }
 
-            var type = Type.GetType(recommendedType.TypeName + ", " + recommendedType.AssemblyName);
+            var type = ResolveRecommendedPostProcessType(recommendedType);
             if (type == null)
             {
                 missingTypes.Add(recommendedType.TypeName);
@@ -1414,6 +1414,137 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
 
         return resolvedTypes;
+    }
+
+    private static Type ResolveRecommendedPostProcessType(RecommendedPostProcessType recommendedType)
+    {
+        return Type.GetType(recommendedType.TypeName + ", " + recommendedType.AssemblyName);
+    }
+
+    private static RecommendedHDRPVolumeSettingsStatus GetRecommendedHDRPVolumeSettingsStatus()
+    {
+        var status = new RecommendedHDRPVolumeSettingsStatus();
+        if (!IsLensFiltersInstalledInProject())
+        {
+            status.Summary = "VLive Lens Filters is not installed.";
+            return status;
+        }
+
+        var settingsAsset = GetHDRPGlobalSettingsAsset(false);
+        if (settingsAsset == null)
+        {
+            status.Summary = "HDRP Global Settings asset was not found.";
+            return status;
+        }
+
+        var serializedObject = new SerializedObject(settingsAsset);
+        serializedObject.Update();
+
+        var beforeTypes = ReadPostProcessTypeList(serializedObject, HDRPBeforePostProcessPropertyName);
+        var afterTypes = ReadPostProcessTypeList(serializedObject, HDRPAfterPostProcessPropertyName);
+        if (beforeTypes == null || afterTypes == null)
+        {
+            status.Summary = "HDRP custom post process settings could not be read.";
+            return status;
+        }
+
+        AddRecommendedPostProcessStatuses(
+            status.BeforeStatuses,
+            RecommendedBeforePostProcesses,
+            beforeTypes,
+            afterTypes,
+            status);
+        AddRecommendedPostProcessStatuses(
+            status.AfterStatuses,
+            RecommendedAfterPostProcesses,
+            afterTypes,
+            beforeTypes,
+            status);
+
+        status.Summary = "Configured " + status.ConfiguredCount + "/" + status.TotalCount;
+        if (status.OtherSlotCount > 0)
+        {
+            status.Summary += ", Other slot " + status.OtherSlotCount;
+        }
+
+        if (status.MissingCount > 0)
+        {
+            status.Summary += ", Missing " + status.MissingCount;
+        }
+
+        return status;
+    }
+
+    private static List<string> ReadPostProcessTypeList(SerializedObject serializedObject, string propertyName)
+    {
+        var property = serializedObject.FindProperty(propertyName);
+        if (property == null || !property.isArray)
+        {
+            return null;
+        }
+
+        var types = new List<string>();
+        for (var i = 0; i < property.arraySize; i++)
+        {
+            var value = property.GetArrayElementAtIndex(i).stringValue;
+            if (!string.IsNullOrEmpty(value))
+            {
+                types.Add(value);
+            }
+        }
+
+        return types;
+    }
+
+    private static void AddRecommendedPostProcessStatuses(
+        Dictionary<string, RecommendedPostProcessItemStatus> statuses,
+        RecommendedPostProcessType[] recommendedTypes,
+        List<string> targetTypes,
+        List<string> otherTypes,
+        RecommendedHDRPVolumeSettingsStatus status)
+    {
+        foreach (var recommendedType in recommendedTypes)
+        {
+            status.TotalCount++;
+
+            var type = ResolveRecommendedPostProcessType(recommendedType);
+            if (type == null)
+            {
+                status.MissingCount++;
+                statuses[recommendedType.TypeName] = new RecommendedPostProcessItemStatus(false, false, false);
+                continue;
+            }
+
+            var configuredInTargetList = ContainsPostProcessType(targetTypes, type);
+            var configuredInOtherList = !configuredInTargetList && ContainsPostProcessType(otherTypes, type);
+            if (configuredInTargetList)
+            {
+                status.ConfiguredCount++;
+            }
+            else if (configuredInOtherList)
+            {
+                status.OtherSlotCount++;
+            }
+
+            statuses[recommendedType.TypeName] = new RecommendedPostProcessItemStatus(true, configuredInTargetList, configuredInOtherList);
+        }
+    }
+
+    private static bool ContainsPostProcessType(List<string> configuredTypes, Type type)
+    {
+        var assemblyQualifiedName = type.AssemblyQualifiedName;
+        var shortName = type.FullName + ", " + type.Assembly.GetName().Name;
+        for (var i = 0; i < configuredTypes.Count; i++)
+        {
+            var configuredType = configuredTypes[i];
+            if (configuredType == assemblyQualifiedName ||
+                configuredType.StartsWith(shortName, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool ApplyRecommendedPostProcessOrder(SerializedObject serializedObject, string propertyName, List<string> recommendedTypes)
@@ -2008,7 +2139,11 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
         private void OnGUI()
         {
+            var status = GetRecommendedHDRPVolumeSettingsStatus();
+
             GUILayout.Label("Recommended Settings", EditorStyles.boldLabel);
+            GUILayout.Space(4f);
+            EditorGUILayout.LabelField(status.Summary, EditorStyles.miniLabel);
             GUILayout.Space(4f);
 
             EditorGUILayout.BeginHorizontal();
@@ -2026,8 +2161,8 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             EditorGUILayout.EndHorizontal();
 
             scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
-            DrawRecommendedGroup("Before Post Process", RecommendedBeforePostProcesses);
-            DrawRecommendedGroup("After Post Process", RecommendedAfterPostProcesses);
+            DrawRecommendedGroup("Before Post Process", RecommendedBeforePostProcesses, status.BeforeStatuses);
+            DrawRecommendedGroup("After Post Process", RecommendedAfterPostProcesses, status.AfterStatuses);
             EditorGUILayout.EndScrollView();
 
             GUILayout.Space(8f);
@@ -2040,15 +2175,25 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             GUI.enabled = true;
         }
 
-        private void DrawRecommendedGroup(string label, RecommendedPostProcessType[] postProcessTypes)
+        private void DrawRecommendedGroup(
+            string label,
+            RecommendedPostProcessType[] postProcessTypes,
+            Dictionary<string, RecommendedPostProcessItemStatus> statuses)
         {
             GUILayout.Space(8f);
             GUILayout.Label(label, EditorStyles.boldLabel);
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             foreach (var postProcessType in postProcessTypes)
             {
+                RecommendedPostProcessItemStatus status;
+                statuses.TryGetValue(postProcessType.TypeName, out status);
+
+                EditorGUILayout.BeginHorizontal();
                 var selected = selectedTypeNames.Contains(postProcessType.TypeName);
-                var nextSelected = EditorGUILayout.ToggleLeft(GetRecommendedDisplayName(postProcessType), selected);
+                var nextSelected = EditorGUILayout.ToggleLeft(GetRecommendedDisplayName(postProcessType), selected, GUILayout.MinWidth(220f));
+                GUILayout.Label(GetRecommendedStatusLabel(status), EditorStyles.miniLabel, GUILayout.Width(80f));
+                EditorGUILayout.EndHorizontal();
+
                 if (nextSelected == selected)
                 {
                     continue;
@@ -2086,6 +2231,26 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         {
             var dotIndex = postProcessType.TypeName.LastIndexOf('.');
             return dotIndex >= 0 ? postProcessType.TypeName.Substring(dotIndex + 1) : postProcessType.TypeName;
+        }
+
+        private static string GetRecommendedStatusLabel(RecommendedPostProcessItemStatus status)
+        {
+            if (!status.HasStatus)
+            {
+                return "Unknown";
+            }
+
+            if (!status.TypeFound)
+            {
+                return "Missing";
+            }
+
+            if (status.ConfiguredInTargetList)
+            {
+                return "Configured";
+            }
+
+            return status.ConfiguredInOtherList ? "Other slot" : "Not set";
         }
     }
 
@@ -2185,6 +2350,36 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
         public string TypeName { get; }
         public string AssemblyName { get; }
+    }
+
+    private sealed class RecommendedHDRPVolumeSettingsStatus
+    {
+        public readonly Dictionary<string, RecommendedPostProcessItemStatus> BeforeStatuses =
+            new Dictionary<string, RecommendedPostProcessItemStatus>();
+        public readonly Dictionary<string, RecommendedPostProcessItemStatus> AfterStatuses =
+            new Dictionary<string, RecommendedPostProcessItemStatus>();
+
+        public string Summary = "Settings status is unknown.";
+        public int TotalCount;
+        public int ConfiguredCount;
+        public int OtherSlotCount;
+        public int MissingCount;
+    }
+
+    private readonly struct RecommendedPostProcessItemStatus
+    {
+        public RecommendedPostProcessItemStatus(bool typeFound, bool configuredInTargetList, bool configuredInOtherList)
+        {
+            HasStatus = true;
+            TypeFound = typeFound;
+            ConfiguredInTargetList = configuredInTargetList;
+            ConfiguredInOtherList = configuredInOtherList;
+        }
+
+        public bool HasStatus { get; }
+        public bool TypeFound { get; }
+        public bool ConfiguredInTargetList { get; }
+        public bool ConfiguredInOtherList { get; }
     }
 
     [Serializable]

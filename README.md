@@ -33,9 +33,9 @@ Live Console writes exported errors to `Logs/VLiveKitConsoleLogs` so they can be
 
 LensFilters HDRP volume setup can be opened from:
 
-`toshi > LensFilters > Recommended HDRP Volume Settings...`
+`toshi > VLiveKit > LensFilters > Recommended HDRP Volume Settings...`
 
-The settings window shows the current status and applies recommended LensFilters HDRP custom post process order only when you press the apply button inside the window.
+The settings window shows whether each recommended LensFilters HDRP custom post process is already configured, missing, or placed in the other post-process phase. It applies the recommended order only when you press the apply button inside the window.
 
 ## Package
 
@@ -84,7 +84,7 @@ Configure the scoped registry in `Packages/manifest.json`.
     }
   ],
   "dependencies": {
-    "com.toshi.vlivekit": "0.1.29"
+    "com.toshi.vlivekit": "0.1.30"
   }
 }
 ```
