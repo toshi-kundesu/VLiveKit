@@ -20,16 +20,22 @@ The window can:
 - check installed package versions
 - check the latest versions from the npm registry
 - open package GitHub repositories and documentation
-- install missing packages
-- update installed registry packages
+- install all available packages or only missing packages from the header buttons
+- update installed registry packages from the header `Update` button
 - show update progress while batch operations are running
 - detect local `Packages` folders, submodules, and `Assets/toshi.VLiveKit` folders without replacing them automatically
 
-Error logs can be exported from:
+Unity Console errors can be copied or exported from:
 
-`toshi > VLiveKit > Error Log Exporter`
+`toshi > VLiveKit > Console > Live Console`
 
-The exporter can copy or write Unity Console errors to `Logs/VLiveKitConsoleLogs` so they can be shared without selecting console entries one by one.
+Live Console writes exported errors to `Logs/VLiveKitConsoleLogs` so they can be shared without selecting console entries one by one.
+
+LensFilters HDRP volume setup can be opened from:
+
+`toshi > LensFilters > Recommended HDRP Volume Settings...`
+
+The settings window shows the current status and applies recommended LensFilters HDRP custom post process order only when you press the apply button inside the window.
 
 ## Package
 

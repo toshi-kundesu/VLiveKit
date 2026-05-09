@@ -108,33 +108,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         OpenWindow();
     }
 
-    [MenuItem(MenuRoot + "Check Install Status")]
-    private static void CheckInstallStatus()
-    {
-        OpenWindow();
-    }
-
-    [MenuItem(MenuRoot + "Install Missing Packages")]
-    private static void InstallMissingPackages()
-    {
-        VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry();
-        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitPackageManager");
-        window.minSize = new Vector2(900f, 520f);
-        window.Show();
-        window.RefreshAndInstallMissing();
-    }
-
-    [MenuItem(MenuRoot + "Install All Packages")]
-    private static void InstallAllPackages()
-    {
-        VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry();
-        var window = GetWindow<VLiveKitInstallerWindow>("VLiveKitPackageManager");
-        window.minSize = new Vector2(900f, 520f);
-        window.Show();
-        window.RefreshAndInstallAll();
-    }
-
-    [MenuItem(MenuRoot + "Recommended HDRP Volume Settings...")]
+    [MenuItem("toshi/LensFilters/Recommended HDRP Volume Settings...")]
     private static void OpenRecommendedHDRPVolumeSettingsFromMenu()
     {
         OpenRecommendedHDRPVolumeSettingsWindow();
@@ -175,7 +149,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     {
         EnsureStyles();
         DrawHeader();
-        DrawToolbar();
+        DrawOperationProgress();
         DrawBackupNotice();
         DrawSummary();
         DrawPackageList();
@@ -473,27 +447,48 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private void ApplyPackageCollection(PackageCollection packageCollection)
     {
-        var packageVersions = new Dictionary<string, string>();
+        var packageInfos = new Dictionary<string, UnityEditor.PackageManager.PackageInfo>();
         if (packageCollection != null)
         {
             foreach (var packageInfo in packageCollection)
             {
-                packageVersions[packageInfo.name] = packageInfo.version;
+                packageInfos[packageInfo.name] = packageInfo;
             }
         }
 
         var manifestJson = ReadManifestJson();
         foreach (var row in rows)
         {
-            if (packageVersions.TryGetValue(row.Spec.PackageName, out var version))
+            var manifestDependency = string.Empty;
+            if (!string.IsNullOrEmpty(manifestJson))
             {
+                var manifestMatch = Regex.Match(manifestJson, "\"" + Regex.Escape(row.Spec.PackageName) + "\"\\s*:\\s*\"([^\"]+)\"");
+                manifestDependency = manifestMatch.Success ? manifestMatch.Groups[1].Value : string.Empty;
+            }
+
+            if (packageInfos.TryGetValue(row.Spec.PackageName, out var packageInfo))
+            {
+                if (TryApplyLocalPackageManagerInfo(row, packageInfo))
+                {
+                    continue;
+                }
+
                 row.State = InstallState.PackageManager;
-                row.InstalledVersion = version;
+                row.InstalledVersion = packageInfo.version;
                 row.Message = "Installed by Package Manager";
                 continue;
             }
 
-            if (!string.IsNullOrEmpty(manifestJson) && manifestJson.Contains("\"" + row.Spec.PackageName + "\""))
+            if (!string.IsNullOrEmpty(manifestDependency) &&
+                manifestDependency.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+            {
+                row.State = InstallState.LocalPackage;
+                row.InstalledVersion = ReadLocalPackageVersion(row.Spec) ?? "local";
+                row.Message = IsSubmodulePackage(row.Spec) ? "Installed by submodule" : "Local package folder";
+                continue;
+            }
+
+            if (!string.IsNullOrEmpty(manifestDependency))
             {
                 row.State = InstallState.Manifest;
                 row.InstalledVersion = ReadLocalPackageVersion(row.Spec) ?? "manifest";
@@ -505,7 +500,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             {
                 row.State = InstallState.LocalPackage;
                 row.InstalledVersion = ReadLocalPackageVersion(row.Spec) ?? "local";
-                row.Message = "Local package or submodule";
+                row.Message = IsSubmodulePackage(row.Spec) ? "Installed by submodule" : "Local package folder";
                 continue;
             }
 
@@ -529,6 +524,29 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             row.InstalledVersion = "";
             row.Message = "Not installed";
         }
+    }
+
+    private static bool TryApplyLocalPackageManagerInfo(PackageRow row, UnityEditor.PackageManager.PackageInfo packageInfo)
+    {
+        if (!IsLocalPackageManagerSource(packageInfo))
+        {
+            return false;
+        }
+
+        row.State = InstallState.LocalPackage;
+        row.InstalledVersion = ReadResolvedPackageVersion(packageInfo) ??
+            ReadLocalPackageVersion(row.Spec) ??
+            (!string.IsNullOrEmpty(packageInfo.version) ? packageInfo.version : "local");
+        row.Message = IsSubmodulePackage(row.Spec) ? "Installed by submodule" : "Local package folder";
+        return true;
+    }
+
+    private static bool IsLocalPackageManagerSource(UnityEditor.PackageManager.PackageInfo packageInfo)
+    {
+        return packageInfo != null &&
+            (packageInfo.source == UnityEditor.PackageManager.PackageSource.Local ||
+                packageInfo.source == UnityEditor.PackageManager.PackageSource.Embedded ||
+                packageInfo.source == UnityEditor.PackageManager.PackageSource.LocalTarball);
     }
 
     private void StartLatestVersionRequests()
@@ -775,21 +793,40 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         EditorGUI.DrawRect(rect, SurfaceColor());
         EditorGUI.DrawRect(new Rect(rect.x, rect.y + rect.height - 1f, rect.width, 1f), SeparatorColor());
 
-        var titleRect = new Rect(rect.x + 18f, rect.y + 13f, rect.width - 320f, 24f);
+        const float buttonGap = 8f;
+        const float buttonY = 14f;
+        const float shortButtonWidth = 108f;
+        const float installAllButtonWidth = 96f;
+        const float installMissingButtonWidth = 118f;
+
+        var refreshRect = new Rect(rect.xMax - 18f - shortButtonWidth, rect.y + buttonY, shortButtonWidth, 28f);
+        var updateAllRect = new Rect(refreshRect.x - buttonGap - shortButtonWidth, rect.y + buttonY, shortButtonWidth, 28f);
+        var installMissingRect = new Rect(updateAllRect.x - buttonGap - installMissingButtonWidth, rect.y + buttonY, installMissingButtonWidth, 28f);
+        var installAllRect = new Rect(installMissingRect.x - buttonGap - installAllButtonWidth, rect.y + buttonY, installAllButtonWidth, 28f);
+        var titleWidth = Mathf.Max(220f, installAllRect.x - rect.x - 30f);
+
+        var titleRect = new Rect(rect.x + 18f, rect.y + 13f, titleWidth, 24f);
         GUI.Label(titleRect, "VLiveKit Package Manager", headerStyle);
 
-        var subtitleRect = new Rect(rect.x + 18f, rect.y + 41f, rect.width - 330f, 18f);
+        var subtitleRect = new Rect(rect.x + 18f, rect.y + 41f, titleWidth, 18f);
         GUI.Label(subtitleRect, "Choose what to add. Local packages stay untouched.", mutedStyle);
 
-        var updateAllRect = new Rect(rect.xMax - 242f, rect.y + 14f, 108f, 28f);
         GUI.enabled = !isChecking && addRequest == null && removeRequest == null;
+        if (GUI.Button(installAllRect, "Install All", primaryButtonStyle))
+        {
+            QueueRows(IsInstallAllCandidate);
+        }
+
+        if (GUI.Button(installMissingRect, "Install Missing", primaryButtonStyle))
+        {
+            QueueRows(row => row.State == InstallState.Missing);
+        }
+
         if (GUI.Button(updateAllRect, "Update", primaryButtonStyle))
         {
             QueueRows(row => row.CanUpdate);
         }
 
-        var refreshRect = new Rect(rect.xMax - 126f, rect.y + 14f, 108f, 28f);
-        GUI.enabled = !isChecking && addRequest == null && removeRequest == null;
         if (GUI.Button(refreshRect, "Refresh", primaryButtonStyle))
         {
             Refresh();
@@ -852,44 +889,19 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         GUILayout.Space(bottomPadding);
     }
 
-    private void DrawToolbar()
+    private void DrawOperationProgress()
     {
-        EditorGUILayout.BeginHorizontal();
-        GUI.enabled = !isChecking && addRequest == null && removeRequest == null;
-        if (GUILayout.Button("Install All", primaryButtonStyle, GUILayout.Width(96f)))
+        if (!IsOperating)
         {
-            QueueRows(IsInstallAllCandidate);
+            return;
         }
 
-        if (GUILayout.Button("Install Missing", toolbarButtonStyle, GUILayout.Width(118f)))
-        {
-            QueueRows(row => row.State == InstallState.Missing);
-        }
-
-        if (GUILayout.Button("Logs", toolbarButtonStyle, GUILayout.Width(72f)))
-        {
-            VLiveKitErrorLogExporter.OpenWindow();
-        }
-
-        GUI.enabled = GUI.enabled && IsLensFiltersInstalled();
-        if (GUILayout.Button("Recommended Settings", toolbarButtonStyle, GUILayout.Width(148f)))
-        {
-            OpenRecommendedHDRPVolumeSettingsWindow();
-        }
-
-        GUI.enabled = true;
-        GUILayout.FlexibleSpace();
-        GUILayout.Label("Samples import into Assets/Samples. Local folders are left as-is.", mutedStyle);
-        EditorGUILayout.EndHorizontal();
-        DrawSeparator(6f, 8f);
-
-        if (IsOperating)
-        {
-            var rect = GUILayoutUtility.GetRect(1f, 4f, GUILayout.ExpandWidth(true));
-            EditorGUI.DrawRect(rect, SeparatorColor());
-            var fillRect = new Rect(rect.x, rect.y, rect.width * GetOperationProgress(), rect.height);
-            EditorGUI.DrawRect(fillRect, AccentColor(1f));
-        }
+        GUILayout.Space(6f);
+        var rect = GUILayoutUtility.GetRect(1f, 4f, GUILayout.ExpandWidth(true));
+        EditorGUI.DrawRect(rect, SeparatorColor());
+        var fillRect = new Rect(rect.x, rect.y, rect.width * GetOperationProgress(), rect.height);
+        EditorGUI.DrawRect(fillRect, AccentColor(1f));
+        GUILayout.Space(8f);
     }
 
     private void DrawBackupNotice()
@@ -1816,6 +1828,12 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             File.Exists(ToProjectPath("Assets/VLiveKit/Editor/VLiveKitInstaller.cs"));
     }
 
+    private static bool IsSubmodulePackage(PackageSpec package)
+    {
+        var gitPath = Path.Combine(ToProjectPath(package.PackageFolderPath), ".git");
+        return File.Exists(gitPath) || Directory.Exists(gitPath);
+    }
+
     private static string ReadInstallerPackageVersion()
     {
         var candidates = new[]
@@ -1846,6 +1864,16 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     {
         var packageJsonPath = FindLocalPackageJson(package);
         return ReadPackageJsonVersion(packageJsonPath);
+    }
+
+    private static string ReadResolvedPackageVersion(UnityEditor.PackageManager.PackageInfo packageInfo)
+    {
+        if (packageInfo == null || string.IsNullOrEmpty(packageInfo.resolvedPath))
+        {
+            return null;
+        }
+
+        return ReadPackageJsonVersion(Path.Combine(packageInfo.resolvedPath, "package.json"));
     }
 
     private static string ReadPackageJsonVersion(string packageJsonPath)

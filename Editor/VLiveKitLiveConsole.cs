@@ -7,45 +7,25 @@ using System.Text;
 using UnityEditor;
 using UnityEngine;
 
-internal sealed class VLiveKitErrorLogExporter : EditorWindow
+internal sealed class VLiveKitLiveConsole : EditorWindow
 {
     private const string MenuRoot = "toshi/VLiveKit/Console/";
-    private const string OutputFolder = "Logs/VLiveKitConsoleLogs";
+    private const string OutputFolder = "Logs/VLiveKitLiveConsole";
 
     private Vector2 scrollPosition;
-    private bool errorsOnly = true;
+    private bool errorsOnly;
     private bool includeStackTrace = true;
     private string previewText = "";
     private string lastOutputPath = "";
 
-    [MenuItem(MenuRoot + "Error Log Exporter")]
+    [MenuItem(MenuRoot + "Live Console")]
     internal static void OpenWindow()
     {
         VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry();
-        var window = GetWindow<VLiveKitErrorLogExporter>("VLiveKit Logs");
+        var window = GetWindow<VLiveKitLiveConsole>("VLiveKit Live Console");
         window.minSize = new Vector2(680f, 420f);
         window.RefreshPreview();
         window.Show();
-    }
-
-    [MenuItem(MenuRoot + "Export Console Errors")]
-    private static void ExportConsoleErrors()
-    {
-        VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry();
-        var path = Export(errorsOnly: true, includeStackTrace: true);
-        if (!string.IsNullOrEmpty(path))
-        {
-            Debug.Log("VLiveKit console errors exported: " + path);
-        }
-    }
-
-    [MenuItem(MenuRoot + "Copy Console Errors")]
-    private static void CopyConsoleErrors()
-    {
-        VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry();
-        var text = BuildLogText(errorsOnly: true, includeStackTrace: true);
-        EditorGUIUtility.systemCopyBuffer = text;
-        Debug.Log("VLiveKit console errors copied to clipboard.");
     }
 
     private void OnGUI()
@@ -59,8 +39,8 @@ internal sealed class VLiveKitErrorLogExporter : EditorWindow
     private void DrawHeader()
     {
         VLiveKitEditorUI.DrawHeader(
-            "VLiveKit Logs",
-            "Export or copy Unity Console output without selecting entries one by one.");
+            "VLiveKit Live Console",
+            "Capture Unity Console output for live debugging and handoff.");
     }
 
     private void DrawOptions()
@@ -134,7 +114,7 @@ internal sealed class VLiveKitErrorLogExporter : EditorWindow
         var folder = Path.Combine(ProjectRoot, OutputFolder);
         Directory.CreateDirectory(folder);
 
-        var fileName = (errorsOnly ? "VLiveKitConsoleErrors_" : "VLiveKitConsoleLogs_") + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt";
+        var fileName = (errorsOnly ? "VLiveKitLiveConsoleErrors_" : "VLiveKitLiveConsole_") + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt";
         var path = Path.Combine(folder, fileName);
         File.WriteAllText(path, text, Encoding.UTF8);
         AssetDatabase.Refresh();
@@ -145,7 +125,7 @@ internal sealed class VLiveKitErrorLogExporter : EditorWindow
     {
         var entries = ConsoleLogReader.Read();
         var builder = new StringBuilder();
-        builder.AppendLine("VLiveKit Console Log Export");
+        builder.AppendLine("VLiveKit Live Console Export");
         builder.AppendLine("Time: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
         builder.AppendLine("Unity: " + Application.unityVersion);
         builder.AppendLine("Project: " + ProjectRoot);
@@ -286,9 +266,17 @@ internal sealed class VLiveKitErrorLogExporter : EditorWindow
                     }
 
                     entry = arguments[1];
+                    var condition = GetString(logEntryType, entry, "condition");
+                    var stackTrace = GetString(logEntryType, entry, "stackTrace");
+                    if (string.IsNullOrEmpty(condition))
+                    {
+                        condition = GetString(logEntryType, entry, "message");
+                        SplitMessageAndStackTrace(ref condition, ref stackTrace);
+                    }
+
                     entries.Add(new ConsoleLogEntry(
-                        GetString(logEntryType, entry, "condition"),
-                        GetString(logEntryType, entry, "stackTrace"),
+                        condition,
+                        stackTrace,
                         GetString(logEntryType, entry, "file"),
                         GetInt(logEntryType, entry, "line"),
                         GetInt(logEntryType, entry, "mode")));
@@ -300,6 +288,23 @@ internal sealed class VLiveKitErrorLogExporter : EditorWindow
             }
 
             return entries;
+        }
+
+        private static void SplitMessageAndStackTrace(ref string condition, ref string stackTrace)
+        {
+            if (!string.IsNullOrEmpty(stackTrace) || string.IsNullOrEmpty(condition))
+            {
+                return;
+            }
+
+            var newlineIndex = condition.IndexOf('\n');
+            if (newlineIndex < 0)
+            {
+                return;
+            }
+
+            stackTrace = condition.Substring(newlineIndex + 1).TrimEnd('\r', '\n');
+            condition = condition.Substring(0, newlineIndex).TrimEnd('\r');
         }
 
         private static string GetString(Type type, object instance, string name)
