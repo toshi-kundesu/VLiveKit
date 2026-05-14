@@ -23,6 +23,7 @@ The window can:
 - install all available packages or only missing packages from the header buttons
 - update installed registry packages from the header `Update` button
 - show update progress while batch operations are running
+- wait and retry when Unity Package Manager is still compiling, importing, or resolving package changes
 - detect local `Packages` folders, submodules, and `Assets/toshi.VLiveKit` folders without replacing them automatically
 
 Unity Console errors can be copied or exported from:

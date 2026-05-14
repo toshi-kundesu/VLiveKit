@@ -27,6 +27,9 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private const string HDRenderPipelineGlobalSettingsTypeName = "UnityEngine.Rendering.HighDefinition.HDRenderPipelineGlobalSettings, Unity.RenderPipelines.HighDefinition.Runtime";
     private const string HDRPBeforePostProcessPropertyName = "beforePostProcessCustomPostProcesses";
     private const string HDRPAfterPostProcessPropertyName = "afterPostProcessCustomPostProcesses";
+    private const int MaxTransientPackageManagerRetries = 2;
+    private const double PackageManagerRetryDelaySeconds = 2.0d;
+    private const string PackageManagerNoDetailsMessage = "Unity Package Manager did not return details. It may still be resolving, compiling, or importing assets.";
 
     private static readonly RecommendedPostProcessType[] RecommendedBeforePostProcesses =
     {
@@ -64,14 +67,25 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private AddRequest addRequest;
     private RemoveRequest removeRequest;
     private PackageRow activeOperation;
+    [SerializeField]
     private string activePackageId;
+    [SerializeField]
     private string activeDisplayName;
     private PackageRow activeRemoveOperation;
+    [SerializeField]
     private string activeRemovePackageId;
+    [SerializeField]
     private string activeRemoveDisplayName;
     private int operationTotalCount;
     private int operationCompletedCount;
     private int operationFailedCount;
+    private int listRetryCount;
+    private int activeOperationRetryCount;
+    private int activeRemoveOperationRetryCount;
+    private bool activeOperationRegistryWaitApplied;
+    private double nextListRetryTime;
+    private double nextAddRetryTime;
+    private double nextRemoveRetryTime;
     private GUIStyle headerStyle;
     private GUIStyle cardStyle;
     private GUIStyle badgeStyle;
@@ -194,12 +208,14 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private void Refresh()
     {
-        if (isChecking || addRequest != null || removeRequest != null)
+        if (isChecking || IsPackageOperationActive)
         {
             return;
         }
 
         isChecking = true;
+        listRetryCount = 0;
+        nextListRetryTime = 0d;
         statusText = "Refreshing package catalog...";
         rows.Clear();
         DisposeCatalogRequests();
@@ -225,6 +241,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
     private void UpdateRequests()
     {
         UpdateCatalogRequests();
+        UpdateDelayedPackageManagerRetries();
         UpdateListRequest();
         UpdateLatestRequests();
         UpdateAddRequest();
@@ -298,6 +315,12 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         else
         {
             var errorMessage = GetPackageManagerErrorMessage(listRequest.Error);
+            if (TryScheduleListRetry(listRequest.Error))
+            {
+                Repaint();
+                return;
+            }
+
             ApplyPackageCollection(null);
             statusText = "Using manifest and local folder checks. Package Manager did not answer this time.";
             foreach (var row in rows)
@@ -311,6 +334,8 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             Debug.Log("VLiveKitPackageManager used project-file fallback checks. " + errorMessage);
         }
 
+        listRetryCount = 0;
+        nextListRetryTime = 0d;
         listRequest = null;
         StartLatestVersionRequests();
         Repaint();
@@ -368,11 +393,11 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
 
         var completedRow = activeOperation ?? FindRowByPackageId(activePackageId);
-        var displayName = !string.IsNullOrEmpty(activeDisplayName) ? activeDisplayName : (!string.IsNullOrEmpty(activePackageId) ? activePackageId : "the package");
-        operationCompletedCount++;
+        var displayName = GetAddOperationDisplayName(completedRow);
 
         if (addRequest.Status == StatusCode.Success)
         {
+            operationCompletedCount++;
             if (completedRow != null)
             {
                 completedRow.State = InstallState.PackageManager;
@@ -384,6 +409,14 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
         else
         {
+            if (TryScheduleAddRetry(addRequest.Error, completedRow, displayName))
+            {
+                addRequest = null;
+                Repaint();
+                return;
+            }
+
+            operationCompletedCount++;
             operationFailedCount++;
             var errorMessage = GetPackageManagerErrorMessage(addRequest.Error);
             if (completedRow != null)
@@ -399,6 +432,9 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         activeOperation = null;
         activePackageId = null;
         activeDisplayName = null;
+        activeOperationRetryCount = 0;
+        activeOperationRegistryWaitApplied = false;
+        nextAddRetryTime = 0d;
         StartNextOperation();
         Repaint();
     }
@@ -411,7 +447,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
 
         var completedRow = activeRemoveOperation ?? FindRowByPackageId(activeRemovePackageId);
-        var displayName = !string.IsNullOrEmpty(activeRemoveDisplayName) ? activeRemoveDisplayName : (!string.IsNullOrEmpty(activeRemovePackageId) ? activeRemovePackageId : "the package");
+        var displayName = GetRemoveOperationDisplayName(completedRow);
 
         if (removeRequest.Status == StatusCode.Success)
         {
@@ -426,6 +462,13 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
         else
         {
+            if (TryScheduleRemoveRetry(removeRequest.Error, completedRow, displayName))
+            {
+                removeRequest = null;
+                Repaint();
+                return;
+            }
+
             var errorMessage = GetPackageManagerErrorMessage(removeRequest.Error);
             if (completedRow != null)
             {
@@ -440,9 +483,219 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         activeRemoveOperation = null;
         activeRemovePackageId = null;
         activeRemoveDisplayName = null;
+        activeRemoveOperationRetryCount = 0;
+        nextRemoveRetryTime = 0d;
         EditorUtility.ClearProgressBar();
         Refresh();
         Repaint();
+    }
+
+    private void UpdateDelayedPackageManagerRetries()
+    {
+        if (TryStartDelayedListRetry())
+        {
+            return;
+        }
+
+        if (TryStartDelayedAddRetry())
+        {
+            return;
+        }
+
+        TryStartDelayedRemoveRetry();
+    }
+
+    private bool TryStartDelayedListRetry()
+    {
+        if (!IsRetryDue(nextListRetryTime) || listRequest != null)
+        {
+            return false;
+        }
+
+        if (!IsEditorReadyForPackageManager())
+        {
+            statusText = "Waiting for Unity to finish compiling or importing before checking packages.";
+            Repaint();
+            return true;
+        }
+
+        nextListRetryTime = 0d;
+        StartStatusRefresh();
+        return true;
+    }
+
+    private bool TryStartDelayedAddRetry()
+    {
+        if (!IsRetryDue(nextAddRetryTime) || addRequest != null || removeRequest != null)
+        {
+            return false;
+        }
+
+        var row = activeOperation ?? FindRowByPackageId(activePackageId);
+        if (row == null)
+        {
+            operationCompletedCount++;
+            operationFailedCount++;
+            Debug.Log("VLiveKitPackageManager could not retry install/update " + GetAddOperationDisplayName(null) + ". The editor lost the request target.");
+            nextAddRetryTime = 0d;
+            activeOperation = null;
+            activePackageId = null;
+            activeDisplayName = null;
+            activeOperationRetryCount = 0;
+            activeOperationRegistryWaitApplied = false;
+            StartNextOperation();
+            Repaint();
+            return true;
+        }
+
+        if (!IsEditorReadyForPackageManager())
+        {
+            statusText = "Waiting for Unity to finish compiling or importing before retrying " + GetAddOperationDisplayName(row) + ".";
+            Repaint();
+            return true;
+        }
+
+        nextAddRetryTime = 0d;
+        StartAddRequest(row);
+        return true;
+    }
+
+    private bool TryStartDelayedRemoveRetry()
+    {
+        if (!IsRetryDue(nextRemoveRetryTime) || addRequest != null || removeRequest != null)
+        {
+            return false;
+        }
+
+        var row = activeRemoveOperation ?? FindRowByPackageId(activeRemovePackageId);
+        if (row == null)
+        {
+            Debug.Log("VLiveKitPackageManager could not retry uninstall " + GetRemoveOperationDisplayName(null) + ". The editor lost the request target.");
+            nextRemoveRetryTime = 0d;
+            activeRemoveOperation = null;
+            activeRemovePackageId = null;
+            activeRemoveDisplayName = null;
+            activeRemoveOperationRetryCount = 0;
+            EditorUtility.ClearProgressBar();
+            Refresh();
+            Repaint();
+            return true;
+        }
+
+        if (!IsEditorReadyForPackageManager())
+        {
+            statusText = "Waiting for Unity to finish compiling or importing before retrying " + GetRemoveOperationDisplayName(row) + ".";
+            Repaint();
+            return true;
+        }
+
+        nextRemoveRetryTime = 0d;
+        StartRemoveRequest(row);
+        return true;
+    }
+
+    private bool TryScheduleListRetry(Error error)
+    {
+        if (!ShouldRetryPackageManagerRequest(error, listRetryCount))
+        {
+            return false;
+        }
+
+        listRetryCount++;
+        listRequest = null;
+        nextListRetryTime = EditorApplication.timeSinceStartup + PackageManagerRetryDelaySeconds;
+        statusText = "Waiting for Unity Package Manager before checking packages (" + listRetryCount + "/" + MaxTransientPackageManagerRetries + ").";
+        return true;
+    }
+
+    private bool TryScheduleAddRetry(Error error, PackageRow row, string displayName)
+    {
+        if (!ShouldRetryPackageManagerRequest(error, activeOperationRetryCount))
+        {
+            return false;
+        }
+
+        activeOperation = row ?? activeOperation ?? FindRowByPackageId(activePackageId);
+        if (activeOperation == null)
+        {
+            return false;
+        }
+
+        activeOperationRetryCount++;
+        activeOperation.Message = "Waiting for Unity Package Manager. Retrying install/update (" + activeOperationRetryCount + "/" + MaxTransientPackageManagerRetries + ").";
+        statusText = "Waiting to retry " + displayName;
+        nextAddRetryTime = EditorApplication.timeSinceStartup + PackageManagerRetryDelaySeconds;
+        return true;
+    }
+
+    private bool TryScheduleRemoveRetry(Error error, PackageRow row, string displayName)
+    {
+        if (!ShouldRetryPackageManagerRequest(error, activeRemoveOperationRetryCount))
+        {
+            return false;
+        }
+
+        activeRemoveOperation = row ?? activeRemoveOperation ?? FindRowByPackageId(activeRemovePackageId);
+        if (activeRemoveOperation == null)
+        {
+            return false;
+        }
+
+        activeRemoveOperationRetryCount++;
+        activeRemoveOperation.Message = "Waiting for Unity Package Manager. Retrying uninstall (" + activeRemoveOperationRetryCount + "/" + MaxTransientPackageManagerRetries + ").";
+        statusText = "Waiting to retry " + displayName;
+        nextRemoveRetryTime = EditorApplication.timeSinceStartup + PackageManagerRetryDelaySeconds;
+        return true;
+    }
+
+    private static bool ShouldRetryPackageManagerRequest(Error error, int retryCount)
+    {
+        return retryCount < MaxTransientPackageManagerRetries && IsTransientPackageManagerError(error);
+    }
+
+    private static bool IsTransientPackageManagerError(Error error)
+    {
+        return error == null || string.IsNullOrEmpty(error.message);
+    }
+
+    private static bool IsEditorReadyForPackageManager()
+    {
+        return !EditorApplication.isCompiling && !EditorApplication.isUpdating;
+    }
+
+    private static bool IsRetryDue(double retryTime)
+    {
+        return retryTime > 0d && EditorApplication.timeSinceStartup >= retryTime;
+    }
+
+    private string GetAddOperationDisplayName(PackageRow row)
+    {
+        return GetOperationDisplayName(row, activeDisplayName, activePackageId);
+    }
+
+    private string GetRemoveOperationDisplayName(PackageRow row)
+    {
+        return GetOperationDisplayName(row, activeRemoveDisplayName, activeRemovePackageId);
+    }
+
+    private static string GetOperationDisplayName(PackageRow row, string displayName, string packageId)
+    {
+        if (!string.IsNullOrEmpty(displayName))
+        {
+            return displayName;
+        }
+
+        if (row != null && !string.IsNullOrEmpty(row.Spec.DisplayName))
+        {
+            return row.Spec.DisplayName;
+        }
+
+        if (!string.IsNullOrEmpty(packageId))
+        {
+            return packageId;
+        }
+
+        return "the requested package";
     }
 
     private void ApplyPackageCollection(PackageCollection packageCollection)
@@ -565,7 +818,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private void QueueRows(Predicate<PackageRow> predicate)
     {
-        if (addRequest != null || removeRequest != null)
+        if (IsPackageOperationActive)
         {
             return;
         }
@@ -631,12 +884,12 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             return error.message;
         }
 
-        return "Unity Package Manager did not return details. It may still be resolving, compiling, or importing assets.";
+        return PackageManagerNoDetailsMessage;
     }
 
     private void StartNextOperation()
     {
-        if (addRequest != null)
+        if (addRequest != null || removeRequest != null || nextAddRetryTime > 0d || nextRemoveRetryTime > 0d)
         {
             return;
         }
@@ -655,20 +908,46 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
 
         activeOperation = pendingOperations.Dequeue();
+        activeOperationRetryCount = 0;
+        activeOperationRegistryWaitApplied = false;
+        StartAddRequest(activeOperation);
+    }
+
+    private void StartAddRequest(PackageRow row)
+    {
+        if (row == null)
+        {
+            StartNextOperation();
+            return;
+        }
+
+        activeOperation = row;
         var version = string.IsNullOrEmpty(activeOperation.LatestVersion) ? "latest" : activeOperation.LatestVersion;
         var packageId = activeOperation.Spec.PackageName + "@" + version;
         activePackageId = activeOperation.Spec.PackageName;
         activeDisplayName = activeOperation.Spec.DisplayName;
-        activeOperation.Message = "Adding " + packageId;
+        activeOperation.Message = activeOperationRetryCount > 0 ? "Retrying " + packageId : "Adding " + packageId;
         statusText = GetOperationProgressLabel(activeOperation.Spec.DisplayName);
+        var registryChanged = false;
         if (VLiveKitManifestUtility.EnsureVLiveKitScopedRegistry())
         {
             statusText = "Updated VLiveKit scoped registry. " + statusText;
+            registryChanged = true;
         }
 
         if (EnsureExternalScopedRegistry())
         {
             statusText = "Updated scoped registries. " + statusText;
+            registryChanged = true;
+        }
+
+        if (registryChanged && !activeOperationRegistryWaitApplied)
+        {
+            activeOperationRegistryWaitApplied = true;
+            activeOperation.Message = "Waiting for Unity Package Manager after scoped registry update.";
+            nextAddRetryTime = EditorApplication.timeSinceStartup + PackageManagerRetryDelaySeconds;
+            EditorUtility.DisplayProgressBar("VLiveKitPackageManager", statusText, GetOperationProgress());
+            return;
         }
 
         EditorUtility.DisplayProgressBar("VLiveKitPackageManager", statusText, GetOperationProgress());
@@ -677,7 +956,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
 
     private void UninstallRow(PackageRow row)
     {
-        if (row == null || addRequest != null || removeRequest != null || isChecking || !row.CanUninstall)
+        if (row == null || IsPackageOperationActive || isChecking || !row.CanUninstall)
         {
             return;
         }
@@ -692,9 +971,28 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
 
         activeRemoveOperation = row;
+        activeRemoveOperationRetryCount = 0;
+        StartRemoveRequest(row);
+    }
+
+    private void StartRemoveRequest(PackageRow row)
+    {
+        if (row == null)
+        {
+            activeRemoveOperation = null;
+            activeRemovePackageId = null;
+            activeRemoveDisplayName = null;
+            activeRemoveOperationRetryCount = 0;
+            nextRemoveRetryTime = 0d;
+            EditorUtility.ClearProgressBar();
+            Refresh();
+            return;
+        }
+
+        activeRemoveOperation = row;
         activeRemovePackageId = row.Spec.PackageName;
         activeRemoveDisplayName = row.Spec.DisplayName;
-        row.Message = "Uninstalling " + row.Spec.PackageName;
+        row.Message = activeRemoveOperationRetryCount > 0 ? "Retrying uninstall " + row.Spec.PackageName : "Uninstalling " + row.Spec.PackageName;
         statusText = "Uninstalling " + row.Spec.DisplayName;
         EditorUtility.DisplayProgressBar("VLiveKitPackageManager", statusText, 0.5f);
         removeRequest = Client.Remove(row.Spec.PackageName);
@@ -811,7 +1109,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         var subtitleRect = new Rect(rect.x + 18f, rect.y + 41f, titleWidth, 18f);
         GUI.Label(subtitleRect, "Choose what to add. Local packages stay untouched.", mutedStyle);
 
-        GUI.enabled = !isChecking && addRequest == null && removeRequest == null;
+        GUI.enabled = !isChecking && !IsPackageOperationActive;
         if (GUI.Button(installAllRect, "Install All", primaryButtonStyle))
         {
             QueueRows(IsInstallAllCandidate);
@@ -1030,12 +1328,12 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         }
 
         var canImportSamples = row.Spec.PackageName != CatalogPackageName;
-        if (DrawActionButton(new Rect(actionsX + 124f, rect.y + 11f, 72f, 24f), "Samples", addRequest == null && removeRequest == null && !isChecking && row.State != InstallState.Missing && canImportSamples))
+        if (DrawActionButton(new Rect(actionsX + 124f, rect.y + 11f, 72f, 24f), "Samples", !IsPackageOperationActive && !isChecking && row.State != InstallState.Missing && canImportSamples))
         {
             ImportSamples(row);
         }
 
-        var canInstall = addRequest == null && removeRequest == null && !isChecking && row.CanInstallFromRegistry;
+        var canInstall = !IsPackageOperationActive && !isChecking && row.CanInstallFromRegistry;
         if (row.State == InstallState.Missing)
         {
             if (DrawActionButton(new Rect(actionsX + 200f, rect.y + 11f, 76f, 24f), "Install", canInstall))
@@ -1055,7 +1353,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             DrawActionButton(new Rect(actionsX + 200f, rect.y + 11f, 76f, 24f), row.IsLocal ? "Local" : "Current", false);
         }
 
-        if (DrawActionButton(new Rect(actionsX + 280f, rect.y + 11f, 78f, 24f), "Uninstall", addRequest == null && removeRequest == null && !isChecking && row.CanUninstall))
+        if (DrawActionButton(new Rect(actionsX + 280f, rect.y + 11f, 78f, 24f), "Uninstall", !IsPackageOperationActive && !isChecking && row.CanUninstall))
         {
             UninstallRow(row);
         }
@@ -1622,7 +1920,9 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         EditorGUILayout.EndHorizontal();
     }
 
-    private bool IsOperating => addRequest != null || removeRequest != null || pendingOperations.Count > 0;
+    private bool IsOperating => IsPackageOperationActive;
+
+    private bool IsPackageOperationActive => addRequest != null || removeRequest != null || pendingOperations.Count > 0 || nextAddRetryTime > 0d || nextRemoveRetryTime > 0d;
 
     private float GetOperationProgress()
     {
