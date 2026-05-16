@@ -8,10 +8,10 @@ using System.Text;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.PackageManager;
-using UnityEditor.PackageManager.UI;
 using UnityEditor.PackageManager.Requests;
 using UnityEngine;
 using UnityEngine.Networking;
+using PackageManagerSample = UnityEditor.PackageManager.UI.Sample;
 
 [InitializeOnLoad]
 internal sealed class VLiveKitInstallerWindow : EditorWindow
@@ -1428,7 +1428,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
             return;
         }
 
-        var samples = new List<Sample>(Sample.FindByPackage(row.Spec.PackageName, version));
+        var samples = new List<PackageManagerSample>(PackageManagerSample.FindByPackage(row.Spec.PackageName, version));
         if (samples.Count == 0)
         {
             if (ImportLocalSamples(row, version))
@@ -1443,7 +1443,7 @@ internal sealed class VLiveKitInstallerWindow : EditorWindow
         var imported = 0;
         foreach (var sample in samples)
         {
-            if (sample.Import(Sample.ImportOptions.OverridePreviousImports))
+            if (sample.Import(PackageManagerSample.ImportOptions.OverridePreviousImports))
             {
                 imported++;
             }
